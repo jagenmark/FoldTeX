@@ -1,0 +1,27 @@
+# Qt/qmake output
+build/
+tests/build/
+tests/keyboard-build/
+Makefile
+.qmake.stash
+*.o
+moc_*.cpp
+qrc_*.cpp
+*.user
+
+# Runtime and debug output
+core
+core.*
+*.log
+*.cache
+
+# Personal notes and their copied assets
+*.foldtex
+*.assets/
+!tests/fixtures/*.foldtex
+
+# Editor and OS files
+.idea/
+.vscode/
+*~
+.DS_Store

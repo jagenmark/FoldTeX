@@ -1,0 +1,9 @@
+{
+  "format": "foldtex-1",
+  "title": "Multiline regression",
+  "lines": [
+    {
+      "source": "5 \\cdot 5 = 32 \\sqrt[3]{5}\n\\linebreak\nThis is a plain text note.\n\n\\text XD"
+    }
+  ]
+}

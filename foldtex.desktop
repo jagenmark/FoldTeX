@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FoldTeX
+GenericName=Live LaTeX Notes
+Comment=Write LaTeX that renders in place
+Exec=foldtex %f
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=application/x-foldtex;
+Keywords=latex;math;notes;write;
+StartupWMClass=foldtex
