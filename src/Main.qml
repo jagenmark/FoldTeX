@@ -1075,7 +1075,12 @@ ApplicationWindow {
     }
 
     Shortcut { sequence: StandardKey.Save; onActivated: documentPath ? saveTo(documentPath) : saveDialog.open() }
-    Shortcut { sequence: StandardKey.Undo; context: Qt.ApplicationShortcut; onActivated: undoDocument() }
+    Shortcut {
+        sequence: StandardKey.Undo
+        context: Qt.ApplicationShortcut
+        enabled: !figureEditor.visible
+        onActivated: undoDocument()
+    }
     Shortcut { sequence: StandardKey.Redo; context: Qt.ApplicationShortcut; onActivated: redoDocument() }
     Shortcut { sequence: StandardKey.SaveAs; onActivated: saveDialog.open() }
     Shortcut { sequence: StandardKey.Open; onActivated: openDialog.open() }

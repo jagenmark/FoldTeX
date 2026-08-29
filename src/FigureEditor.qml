@@ -124,6 +124,13 @@ Popup {
 
     onOpened: reset()
 
+    Shortcut {
+        sequence: StandardKey.Undo
+        context: Qt.WindowShortcut
+        enabled: figureEditor.visible
+        onActivated: figureEditor.undo()
+    }
+
     background: Rectangle {
         color: figureEditor.backgroundColor
         radius: 10
@@ -180,7 +187,12 @@ Popup {
             }
 
             Item { Layout.fillWidth: true }
-            ToolButton { text: "↶"; onClicked: figureEditor.undo(); ToolTip.text: "Undo"; ToolTip.visible: hovered }
+            ToolButton {
+                text: "↶"
+                onClicked: figureEditor.undo()
+                ToolTip.text: "Undo · Ctrl+Z"
+                ToolTip.visible: hovered
+            }
             ToolButton {
                 text: "Clear"
                 onClicked: {

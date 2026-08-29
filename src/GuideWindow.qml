@@ -231,9 +231,9 @@ Window {
         },
         {
             title: "Figures",
-            body: "Press Ctrl+Alt+I to draw beside your notes. The figure tool has a pen, eraser, lines, arrows, boxes, and text. Save inserts the figure as its own note row.",
-            code: "Ctrl+Alt+I",
-            keywords: "figure drawing draw pen eraser line arrow box text diagram"
+            body: "Press Ctrl+Alt+I to draw beside your notes. The figure tool has a pen, eraser, lines, arrows, boxes, and text. Ctrl+Z removes the last stroke, shape, or text. Save inserts the figure as its own note row.",
+            code: "Ctrl+Alt+I   draw a figure\nCtrl+Z       undo the last drawing action",
+            keywords: "figure drawing draw pen eraser line arrow box text diagram undo stroke ctrl z"
         },
         {
             title: "Lecture slides",

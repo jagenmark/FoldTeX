@@ -435,6 +435,13 @@ int main(int argc, char **argv) {
     if (!expect(figurePopup->property("actions").toList().size() == 1,
                 QStringLiteral("Figure editor did not store an arrow")))
         return 1;
+    QTest::keyClick(window, Qt::Key_Z, Qt::ControlModifier);
+    QTest::qWait(50);
+    if (!expect(figurePopup->property("actions").toList().isEmpty(),
+                QStringLiteral("Ctrl+Z did not undo the last figure action")))
+        return 1;
+    QMetaObject::invokeMethod(figurePopup, "beginAction", Q_ARG(QVariant, 30), Q_ARG(QVariant, 30));
+    QMetaObject::invokeMethod(figurePopup, "finishAction", Q_ARG(QVariant, 120), Q_ARG(QVariant, 90));
     QMetaObject::invokeMethod(figurePopup, "saveFigure");
     QTest::qWait(1000);
     QVariant figureLines;

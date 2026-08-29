@@ -31,7 +31,8 @@ they have not been tested.
 - Set the writing font, size, and side margin. The margin shrinks on narrow
   windows, and both source and rendered math track the chosen size.
 - Draw figures with a pen, eraser, lines, arrows, boxes, and text, then insert
-  them as image rows.
+  them as image rows. `Ctrl+Z` removes the last drawing action while the figure
+  editor is open.
 - Copy a lecture PDF beside a saved note and view it next to the note. Link a
   row to a slide or capture the visible slide area as an image row.
 
