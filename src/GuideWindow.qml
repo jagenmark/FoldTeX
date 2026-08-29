@@ -33,7 +33,7 @@ Window {
     readonly property var sections: [
         {
             title: "How FoldTeX reads a note",
-            body: "Use one formula or one prose line per row. Press Enter to render the row and move down. Click a rendered formula to edit it again. FoldTeX adds math mode, so dollar signs are optional.",
+            body: "Use one formula or one prose line per row. A new empty note focuses its first row; you can also click any unused writing space to start. Press Enter to render the row and move down. Click a rendered formula to edit it again. FoldTeX adds math mode, so dollar signs are optional.",
             code: "5 \\cdot 5 = 25\nThis is a plain text note.",
             keywords: "foldtex enter row prose text render dollar"
         },

@@ -624,6 +624,24 @@ int main(int argc, char **argv) {
     editorValue.clear();
     QMetaObject::invokeMethod(window, "activeEditorItem", Q_RETURN_ARG(QVariant, editorValue));
     editor = editorValue.value<QObject *>();
+    if (!expect(editor && editor->property("activeFocus").toBool()
+                    && editor->property("placeholderText").toString()
+                           == QStringLiteral("Start typing…"),
+                QStringLiteral("A new blank note did not show and focus its typing row")))
+        return 1;
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(window->width() / 2, window->height() - 50));
+    QTest::qWait(100);
+    editorValue.clear();
+    QMetaObject::invokeMethod(window, "activeEditorItem", Q_RETURN_ARG(QVariant, editorValue));
+    editor = editorValue.value<QObject *>();
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(editor && editor->property("activeFocus").toBool()
+                    && newLines.toList().size() == 1,
+                QStringLiteral("Clicking blank writing space did not focus the empty row")))
+        return 1;
+
     QMetaObject::invokeMethod(editor, "forceActiveFocus");
     editor->setProperty("text", QStringLiteral("frac"));
     editor->setProperty("cursorPosition", 4);

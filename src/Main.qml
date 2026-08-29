@@ -628,7 +628,26 @@ ApplicationWindow {
         if (index !== snippetStopRow) clearSnippetStops()
         if (activeIndex !== index) renderLine(activeIndex)
         activeIndex = index
-        Qt.callLater(function() { list.positionViewAtIndex(index, ListView.Contain) })
+        Qt.callLater(function() {
+            list.positionViewAtIndex(index, ListView.Contain)
+            var rowItem = list.itemAtIndex(index)
+            if (rowItem && rowItem.currentContent
+                    && rowItem.currentContent.forceActiveFocus)
+                rowItem.currentContent.forceActiveFocus()
+        })
+    }
+
+    function focusBlankWritingArea() {
+        clearLineSelection()
+        var target = Math.max(0, lines.count - 1)
+        if (lines.count === 0 || lines.get(target).kind !== "normal"
+                || lines.get(target).source.length !== 0) {
+            lines.append(makeLine(""))
+            target = lines.count - 1
+            changed()
+        }
+        activeIndex = target
+        Qt.callLater(function() { win.editLine(target) })
     }
 
     function activeEditorItem() {
@@ -2249,6 +2268,17 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.preferredWidth: win.widePdfSplit ? win.width * 0.54 : win.width
 
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: function(point) {
+                        var local = list.mapFromItem(notePane, point.position.x,
+                                                     point.position.y)
+                        var rowItem = list.itemAt(local.x, local.y + list.contentY)
+                        if (!rowItem) win.focusBlankWritingArea()
+                    }
+                }
+
             ListView {
                 id: list
                 objectName: "documentList"
@@ -2440,6 +2470,8 @@ ApplicationWindow {
                         selectedTextColor: backend.themeBackground
                         font.family: win.editorFont
                         font.pixelSize: win.editorSize
+                        placeholderText: "Start typing…"
+                        placeholderTextColor: win.mutedColor
                         wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                         padding: 0
                         leftPadding: 0
