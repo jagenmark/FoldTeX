@@ -719,6 +719,26 @@ int main(int argc, char **argv) {
                     .arg(undoSource)))
         return 1;
 
+    QObject *rowTypePopup = window->findChild<QObject *>(QStringLiteral("rowTypePopup"));
+    if (!expect(rowTypePopup, QStringLiteral("Row type popup was not found")))
+        return 1;
+    QMetaObject::invokeMethod(rowTypePopup, "open");
+    QTest::qWait(350);
+    QObject *rowTypeList = window->findChild<QObject *>(QStringLiteral("rowTypeList"));
+    if (!expect(rowTypeList, QStringLiteral("Row type list was not found"))
+        || !expect(rowTypeList->property("optionTextColor") == window->property("textColor"),
+                   QStringLiteral("Row type text does not use the visible theme color"))
+        || !expect(rowTypeList->property("currentIndex").toInt() == 0,
+                   QStringLiteral("Current row type has no selection")))
+        return 1;
+    QTest::keyClick(window, Qt::Key_Down);
+    QTest::qWait(50);
+    if (!expect(rowTypeList->property("currentIndex").toInt() == 1,
+                QStringLiteral("Row type keyboard highlight did not move")))
+        return 1;
+    QTest::keyClick(window, Qt::Key_Escape);
+    QTest::qWait(100);
+
     QMetaObject::invokeMethod(window, "setActiveRowKind",
                               Q_ARG(QVariant, QStringLiteral("theorem")));
     QMetaObject::invokeMethod(window, "addCatchupMarker");

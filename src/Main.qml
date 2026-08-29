@@ -1179,6 +1179,7 @@ ApplicationWindow {
 
     Popup {
         id: rowTypePopup
+        objectName: "rowTypePopup"
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(380, win.width - 40)
@@ -1187,8 +1188,11 @@ ApplicationWindow {
         focus: true
         padding: 8
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onOpened: rowTypeList.currentIndex = Math.max(0,
-            ["normal", "definition", "theorem", "proof", "example"].indexOf(lines.get(activeIndex).kind))
+        onOpened: {
+            rowTypeList.currentIndex = Math.max(0,
+                ["normal", "definition", "theorem", "proof", "example"].indexOf(lines.get(activeIndex).kind))
+            Qt.callLater(function() { rowTypeList.forceActiveFocus() })
+        }
         background: Rectangle {
             color: backend.themeBackground
             radius: 10
@@ -1207,19 +1211,49 @@ ApplicationWindow {
             }
             ListView {
                 id: rowTypeList
+                objectName: "rowTypeList"
+                property color optionTextColor: win.textColor
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 model: ["Normal", "Definition", "Theorem", "Proof", "Example"]
                 focus: true
                 keyNavigationWraps: true
                 delegate: ItemDelegate {
+                    id: rowTypeOption
                     required property string modelData
                     required property int index
+                    objectName: "rowTypeOption" + index
+                    property color labelColor: rowTypeList.optionTextColor
                     width: rowTypeList.width
+                    height: 58
                     text: modelData
                     highlighted: ListView.isCurrentItem
                     font.family: win.editorFont
                     onClicked: win.setActiveRowKind(modelData.toLowerCase())
+
+                    contentItem: Text {
+                        text: rowTypeOption.modelData
+                        color: rowTypeOption.labelColor
+                        font.family: win.editorFont
+                        font.pixelSize: win.editorSize
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: 12
+                    }
+
+                    background: Rectangle {
+                        radius: 6
+                        color: rowTypeOption.highlighted
+                               ? Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
+                                         backend.themeAccent.b, 0.28)
+                               : rowTypeOption.hovered
+                                 ? Qt.rgba(win.textColor.r, win.textColor.g,
+                                           win.textColor.b, 0.08)
+                                 : "transparent"
+                        border.width: rowTypeOption.highlighted ? 1 : 0
+                        border.color: Qt.rgba(backend.themeAccent.r,
+                                              backend.themeAccent.g,
+                                              backend.themeAccent.b, 0.72)
+                    }
                 }
                 Keys.onReturnPressed: function(event) {
                     win.setActiveRowKind(model[currentIndex].toLowerCase())
