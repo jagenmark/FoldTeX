@@ -133,6 +133,11 @@ int main(int argc, char **argv) {
     if (!expect(edgeMenuPanel->property("opacity").toReal() < 0.1,
                 QStringLiteral("Right-edge menu did not hide after hover")))
         return 1;
+    QTest::mouseMove(window, QPoint(window->width() - 2, 200));
+    QTest::qWait(220);
+    if (!expect(edgeMenuPanel->property("opacity").toReal() < 0.1,
+                QStringLiteral("The edge menu still opens over the document scrollbar")))
+        return 1;
     window->setWidth(560);
     QTest::qWait(30);
     if (!expect(titleDisplay->property("visible").toBool()
@@ -299,13 +304,51 @@ int main(int argc, char **argv) {
     QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(wrappedRow)));
     QTest::qWait(50);
 
+    QVariantList scrollLines;
+    for (int i = 0; i < 40; ++i)
+        scrollLines.append(QVariantMap{{QStringLiteral("source"),
+                                       QStringLiteral("scroll row %1").arg(i)}});
+    const QVariantMap scrollData{{QStringLiteral("title"), QStringLiteral("Scroll test")},
+                                 {QStringLiteral("lines"), scrollLines}};
+    QMetaObject::invokeMethod(
+        window, "loadData",
+        Q_ARG(QVariant, scrollData),
+        Q_ARG(QVariant, QString()));
+    QTest::qWait(100);
+
     QObject *documentList = window->findChild<QObject *>(QStringLiteral("documentList"));
     QObject *documentScrollBar = window->findChild<QObject *>(
         QStringLiteral("documentScrollBar"));
-    if (!expect(documentScrollBar, QStringLiteral("Document scroll bar was not found")))
+    QObject *documentScrollLinger = window->findChild<QObject *>(
+        QStringLiteral("documentScrollLinger"));
+    QObject *documentScrollHoverZone = window->findChild<QObject *>(
+        QStringLiteral("documentScrollHoverZone"));
+    QObject *documentScrollDownShortcut = window->findChild<QObject *>(
+        QStringLiteral("documentScrollDownShortcut"));
+    if (!expect(documentScrollBar && documentScrollLinger && documentScrollHoverZone,
+                QStringLiteral("Document scroll controls were not found"))
+        || !expect(documentScrollLinger->property("interval").toInt() >= 2000,
+                   QStringLiteral("Document scrollbar still hides too quickly")))
         return 1;
     window->setHeight(420);
     QTest::qWait(100);
+    window->setProperty("displayMode", 2);
+    QTest::qWait(80);
+    if (!expect(documentScrollDownShortcut
+                    && documentScrollDownShortcut->property("enabled").toBool(),
+                QStringLiteral("Document Down shortcut was not enabled outside the editor")))
+        return 1;
+    documentList->setProperty("contentY", documentList->property("originY"));
+    const qreal arrowStart = documentList->property("contentY").toReal();
+    QTest::keyClick(window, Qt::Key_Down);
+    QTest::qWait(50);
+    if (!expect(documentList->property("contentY").toReal() - arrowStart >= 45,
+                QStringLiteral("Down arrow did not scroll a non-editing document (%1 -> %2)")
+                    .arg(arrowStart).arg(documentList->property("contentY").toReal())))
+        return 1;
+    window->setProperty("displayMode", 0);
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(wrappedRow)));
+    QTest::qWait(50);
     documentList->setProperty("contentY", documentList->property("originY"));
     const qreal wheelStart = documentList->property("contentY").toReal();
     QTest::wheelEvent(window, QPointF(window->width() / 2, window->height() / 2),
@@ -332,9 +375,9 @@ int main(int argc, char **argv) {
                 QStringLiteral("Smooth angle step scrolls the document too slowly")))
         return 1;
     QTest::qWait(900);
-    if (!expect(!documentScrollBar->property("active").toBool()
-                    && documentScrollBar->property("opacity").toReal() < 0.1,
-                QStringLiteral("Document scroll bar did not fade after scrolling")))
+    if (!expect(documentScrollBar->property("active").toBool()
+                    && documentScrollBar->property("opacity").toReal() > 0.9,
+                QStringLiteral("Document scroll bar faded before it could be grabbed")))
         return 1;
 
     QTemporaryDir slideCourse;

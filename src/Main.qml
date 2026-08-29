@@ -31,6 +31,10 @@ ApplicationWindow {
     property bool pdfOpen: false
     property string saveStatus: "Saved"
     property int displayMode: 0
+    onDisplayModeChanged: {
+        if (displayMode !== 0)
+            Qt.callLater(function() { list.forceActiveFocus() })
+    }
     property int selectionAnchor: -1
     property int selectionEnd: -1
     property int searchLine: -1
@@ -381,7 +385,8 @@ ApplicationWindow {
 
     Timer {
         id: documentScrollLinger
-        interval: 700
+        objectName: "documentScrollLinger"
+        interval: 2600
     }
 
     Timer {
@@ -653,6 +658,16 @@ ApplicationWindow {
     function activeEditorItem() {
         var rowItem = list.itemAtIndex(activeIndex)
         return rowItem ? rowItem.currentContent : null
+    }
+
+    function documentEditorHasFocus() {
+        var editor = activeEditorItem()
+        return editor && editor.activeFocus
+    }
+
+    function keyboardScrollDocument(amount) {
+        documentScrollLinger.restart()
+        scrollDocumentBy(amount)
     }
 
     function commitLine(index) {
@@ -1064,6 +1079,30 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Copy; enabled: win.hasLineSelection; onActivated: copySelectedLines() }
     Shortcut { sequence: StandardKey.Cut; enabled: win.hasLineSelection; onActivated: cutSelectedLines() }
     Shortcut { sequence: "Delete"; enabled: win.hasLineSelection; onActivated: deleteSelectedLines() }
+    Shortcut {
+        objectName: "documentScrollUpShortcut"
+        sequence: "Up"
+        context: Qt.WindowShortcut
+        enabled: !win.documentEditorHasFocus() && !titleField.activeFocus
+                 && !searchPopup.visible && !commandPopup.visible
+                 && !rowTypePopup.visible && !courseSearchPopup.visible
+                 && !fontDialog.visible && !lectureDialog.visible
+                 && !helpDialog.visible && !messageDialog.visible
+                 && !newDocumentDialog.visible && !figureEditor.visible
+        onActivated: win.keyboardScrollDocument(-Math.max(48, win.editorSize * 3))
+    }
+    Shortcut {
+        objectName: "documentScrollDownShortcut"
+        sequence: "Down"
+        context: Qt.WindowShortcut
+        enabled: !win.documentEditorHasFocus() && !titleField.activeFocus
+                 && !searchPopup.visible && !commandPopup.visible
+                 && !rowTypePopup.visible && !courseSearchPopup.visible
+                 && !fontDialog.visible && !lectureDialog.visible
+                 && !helpDialog.visible && !messageDialog.visible
+                 && !newDocumentDialog.visible && !figureEditor.visible
+        onActivated: win.keyboardScrollDocument(Math.max(48, win.editorSize * 3))
+    }
 
     Popup {
         id: searchPopup
@@ -1813,6 +1852,7 @@ ApplicationWindow {
             font.pixelSize: 14
             lineHeight: 1.35
             text: "Enter                 Render and move down\n"
+                  + "Up / Down             Scroll when not editing\n"
                   + "Shift+click           Select a range of lines\n"
                   + "Shift+Up / Down       Extend line selection\n"
                   + "Ctrl+Shift+A          Select every line\n"
@@ -1956,7 +1996,13 @@ ApplicationWindow {
         height: edgeMenuPanel.height + 12
         z: 100
 
-        HoverHandler { id: edgeMenuHover }
+        Item {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            width: 54
+            height: 54
+            HoverHandler { id: edgeMenuTriggerHover }
+        }
 
         Rectangle {
             id: edgeMenuPanel
@@ -1971,9 +2017,11 @@ ApplicationWindow {
             color: Qt.rgba(win.color.r, win.color.g, win.color.b, 0.96)
             border.width: 1
             border.color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.14)
-            opacity: edgeMenuHover.hovered ? 1 : 0
-            enabled: edgeMenuHover.hovered
+            opacity: edgeMenuTriggerHover.hovered || edgeMenuPanelHover.hovered ? 1 : 0
+            enabled: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            HoverHandler { id: edgeMenuPanelHover }
 
             Item {
                 id: edgeMenuColumn
@@ -2289,6 +2337,15 @@ ApplicationWindow {
                 spacing: 2
                 topMargin: 46
                 bottomMargin: 120
+                focus: win.displayMode !== 0
+                Keys.onUpPressed: function(event) {
+                    win.keyboardScrollDocument(-Math.max(48, win.editorSize * 3))
+                    event.accepted = true
+                }
+                Keys.onDownPressed: function(event) {
+                    win.keyboardScrollDocument(Math.max(48, win.editorSize * 3))
+                    event.accepted = true
+                }
 
             WheelHandler {
                 target: null
@@ -2298,6 +2355,18 @@ ApplicationWindow {
                                                   event.angleDelta.y)
                     win.scrollDocumentBy(-delta)
                     event.accepted = true
+                }
+            }
+
+            Item {
+                objectName: "documentScrollHoverZone"
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                width: 24
+                z: 15
+                HoverHandler {
+                    onHoveredChanged: if (hovered) documentScrollLinger.restart()
                 }
             }
 
@@ -2609,18 +2678,18 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar {
                 id: documentScrollBar
                 objectName: "documentScrollBar"
-                policy: ScrollBar.AsNeeded
+                policy: ScrollBar.AlwaysOn
                 active: hovered || pressed || list.moving || documentScrollLinger.running
-                implicitWidth: 9
-                leftPadding: 3
-                rightPadding: 3
+                implicitWidth: 14
+                leftPadding: 5
+                rightPadding: 5
                 topPadding: 8
                 bottomPadding: 8
-                opacity: active ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 160 } }
+                opacity: active ? 1 : 0.24
+                Behavior on opacity { NumberAnimation { duration: 180 } }
                 background: Item { }
                 contentItem: Rectangle {
-                    implicitWidth: 3
+                    implicitWidth: 4
                     radius: width / 2
                     color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.48)
                 }

@@ -56,6 +56,12 @@ Window {
             keywords: "select rows lines copy cut delete paste multiline join backspace"
         },
         {
+            title: "Scroll the document",
+            body: "When you are not editing a row, Up and Down scroll the page. While typing, they move through wrapped text and between rows. The right scrollbar stays faintly visible, remains bright after scrolling, and can be dragged. Only the top-right corner opens the tool menu.",
+            code: "Up / Down",
+            keywords: "scroll document page arrow up down scrollbar drag trackpad menu corner"
+        },
+        {
             title: "Undo and redo",
             body: "Ctrl+Z undoes changes across the whole note. Ctrl+Shift+Z redoes them. A snippet expansion counts as one change.",
             code: "Ctrl+Z\nCtrl+Shift+Z",

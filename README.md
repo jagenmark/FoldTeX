@@ -36,7 +36,8 @@ they have not been tested.
 ## Shortcuts
 
 - `Enter`: render the row and move down
-- `Up` or `Down`: move within a wrapped row, then between rows
+- `Up` or `Down`: move within and between rows while editing; scroll the page
+  when no row is being edited
 - `Shift+click` or `Shift+Up` / `Shift+Down`: select a range of rows
 - `Ctrl+Shift+A`: select all rows; copy, cut, Backspace, and Delete then act on
   the whole selection
