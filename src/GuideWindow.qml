@@ -39,8 +39,8 @@ Window {
         },
         {
             title: "Fast LaTeX snippets",
-            body: "Type a short name and press Tab. FoldTeX expands sqrt, root, frac, sum, prod, int, lim, cases, and mat2. Tab then moves through the parts you need to replace.",
-            code: "frac  then Tab\nroot  then Tab\nmat2  then Tab",
+            body: "Type a short name and press Tab. FoldTeX expands sqrt, root, frac, sum, prod, int, lim, cases, and mat2. Tab moves to the next part you need to replace; Shift+Tab moves back one part.",
+            code: "frac  then Tab\nTab   next field\nShift+Tab   prior field",
             keywords: "snippet tab fast template placeholder sqrt root frac sum product integral limit cases matrix"
         },
         {

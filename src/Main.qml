@@ -262,6 +262,14 @@ ApplicationWindow {
         return true
     }
 
+    function retreatSnippet(editor, rowIndex) {
+        if (snippetStopRow !== rowIndex || !snippetStops.length) return false
+        snippetStopIndex = Math.max(0, snippetStopIndex - 1)
+        var stop = snippetStops[snippetStopIndex]
+        editor.select(stop.start, stop.end)
+        return true
+    }
+
     function handleSnippetTab(editor, rowIndex) {
         if (advanceSnippet(editor, rowIndex)) return true
         var cursor = editor.cursorPosition
@@ -1887,6 +1895,7 @@ ApplicationWindow {
             lineHeight: 1.35
             text: "Enter                 Render and move down\n"
                   + "Up / Down             Scroll when not editing\n"
+                  + "Tab / Shift+Tab       Next / prior snippet field\n"
                   + "Shift+click           Select a range of lines\n"
                   + "Shift+Up / Down       Extend line selection\n"
                   + "Ctrl+Shift+A          Select every line\n"
@@ -2595,7 +2604,13 @@ ApplicationWindow {
                             win.commitLine(row.index)
                         }
                         Keys.onTabPressed: function(event) {
-                            event.accepted = win.handleSnippetTab(editor, row.index)
+                            event.accepted = event.modifiers & Qt.ShiftModifier
+                                    ? win.retreatSnippet(editor, row.index)
+                                    : win.handleSnippetTab(editor, row.index)
+                        }
+                        Keys.onBacktabPressed: function(event) {
+                            win.retreatSnippet(editor, row.index)
+                            event.accepted = true
                         }
                         Keys.onUpPressed: function(event) {
                             if (event.modifiers & Qt.ShiftModifier) {

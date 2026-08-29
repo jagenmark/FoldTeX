@@ -708,6 +708,16 @@ int main(int argc, char **argv) {
                     .arg(window->property("snippetStopIndex").toInt())
                     .arg(editor->property("activeFocus").toBool())))
         return 1;
+    QTest::keyClick(window, Qt::Key_Tab, Qt::ShiftModifier);
+    if (!expect(editor->property("selectedText").toString() == QStringLiteral("a")
+                    && window->property("snippetStopIndex").toInt() == 0
+                    && !titleField->property("activeFocus").toBool(),
+                QStringLiteral("Shift+Tab did not return to the prior snippet field")))
+        return 1;
+    QTest::keyClick(window, Qt::Key_Tab);
+    if (!expect(editor->property("selectedText").toString() == QStringLiteral("b"),
+                QStringLiteral("Tab did not move forward after Shift+Tab")))
+        return 1;
     QTest::keyClick(window, Qt::Key_Z, Qt::ControlModifier);
     QTest::qWait(80);
     newLines.clear();

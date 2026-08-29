@@ -45,6 +45,7 @@ they have not been tested.
 - `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+O`: save, save as, and open
 - `Ctrl+Q`: save recovery data and quit
 - `Ctrl+Z`, `Ctrl+Shift+Z`: undo and redo
+- `Tab`, `Shift+Tab`: move forward and back through snippet fields
 - `Ctrl+F`: find and replace in the note
 - `Ctrl+K`: find and insert LaTeX by name
 - `Ctrl+G`: open the searchable LaTeX guide
