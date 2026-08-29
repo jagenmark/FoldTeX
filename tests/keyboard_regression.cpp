@@ -190,6 +190,16 @@ int main(int argc, char **argv) {
     if (!expect(guideFlick->property("contentY").toReal() >= 240,
                 QStringLiteral("Smooth angle step scrolls the guide too slowly")))
         return 1;
+    guideFlick->setProperty("contentY", 0);
+    const QPointF guideWheelPoint(guide->width() / 2, guide->height() / 2);
+    QTest::wheelEvent(guide, guideWheelPoint, QPoint(), QPoint(0, -3),
+                      Qt::NoModifier, Qt::NoScrollPhase);
+    QTest::qWait(30);
+    const qreal touchpadGuideDistance = guideFlick->property("contentY").toReal();
+    if (!expect(touchpadGuideDistance >= 220,
+                QStringLiteral("A small touchpad update scrolls the guide too slowly (%1 px)")
+                    .arg(touchpadGuideDistance)))
+        return 1;
     QTest::qWait(900);
     if (!expect(!guideScrollBar->property("active").toBool()
                     && guideScrollBar->property("opacity").toReal() < 0.1,

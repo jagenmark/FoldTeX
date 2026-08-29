@@ -192,8 +192,8 @@ Window {
     }
 
     function wheelDistance(pixelDelta, angleDelta) {
-        if (pixelDelta !== 0) return pixelDelta * 20
-        return Math.abs(angleDelta) < 120 ? angleDelta * 20 : angleDelta
+        if (pixelDelta !== 0) return pixelDelta * 80
+        return Math.abs(angleDelta) < 120 ? angleDelta * 80 : angleDelta
     }
 
     Timer {
