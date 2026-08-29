@@ -1253,6 +1253,10 @@ ApplicationWindow {
                 id: rowTypeList
                 objectName: "rowTypeList"
                 property color optionTextColor: win.textColor
+                property color selectionFillColor: Qt.rgba(
+                    win.textColor.r, win.textColor.g, win.textColor.b, 0.14)
+                property color selectionBorderColor: Qt.rgba(
+                    win.textColor.r, win.textColor.g, win.textColor.b, 0.68)
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 model: rowTypePopup.labels
@@ -1283,16 +1287,13 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: 6
                         color: rowTypeOption.highlighted
-                               ? Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
-                                         backend.themeAccent.b, 0.28)
+                               ? rowTypeList.selectionFillColor
                                : rowTypeOption.hovered
                                  ? Qt.rgba(win.textColor.r, win.textColor.g,
                                            win.textColor.b, 0.08)
                                  : "transparent"
-                        border.width: rowTypeOption.highlighted ? 1 : 0
-                        border.color: Qt.rgba(backend.themeAccent.r,
-                                              backend.themeAccent.g,
-                                              backend.themeAccent.b, 0.72)
+                        border.width: rowTypeOption.highlighted ? 2 : 0
+                        border.color: rowTypeList.selectionBorderColor
                     }
                 }
             }
