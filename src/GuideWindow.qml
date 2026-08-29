@@ -81,7 +81,7 @@ Window {
         },
         {
             title: "Definitions, theorems, and proofs",
-            body: "Ctrl+period marks the active row as a definition, theorem, proof, example, or normal row. Ctrl+M adds a timed catch-up mark when the lecture moves ahead.",
+            body: "Ctrl+period opens the row-type menu. Use Up and Down to choose normal, definition, theorem, proof, or example, then press Enter to apply it. Ctrl+M adds a timed catch-up mark when the lecture moves ahead.",
             code: "Ctrl+.   choose row type\nCtrl+M   add catch-up mark",
             keywords: "definition theorem proof example row type catch up marker lecture"
         },

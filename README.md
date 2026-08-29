@@ -49,7 +49,7 @@ they have not been tested.
 - `Ctrl+F`: find and replace in the note
 - `Ctrl+K`: find and insert LaTeX by name
 - `Ctrl+G`: open the searchable LaTeX guide
-- `Ctrl+.`: set the current row type
+- `Ctrl+.`: set the current row type; choose with Up/Down and Enter
 - `Ctrl+M`: add a timed catch-up mark
 - `Ctrl+Alt+L`: set course and lecture details
 - `Ctrl+Alt+F`: search notes in the current note's folder

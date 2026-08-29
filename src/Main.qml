@@ -1188,6 +1188,12 @@ ApplicationWindow {
     Popup {
         id: rowTypePopup
         objectName: "rowTypePopup"
+        readonly property var kinds: ["normal", "definition", "theorem", "proof", "example"]
+        readonly property var labels: ["Normal", "Definition", "Theorem", "Proof", "Example"]
+        function applyCurrentType() {
+            if (rowTypeList.currentIndex >= 0)
+                win.setActiveRowKind(kinds[rowTypeList.currentIndex])
+        }
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(380, win.width - 40)
@@ -1198,8 +1204,34 @@ ApplicationWindow {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         onOpened: {
             rowTypeList.currentIndex = Math.max(0,
-                ["normal", "definition", "theorem", "proof", "example"].indexOf(lines.get(activeIndex).kind))
+                kinds.indexOf(lines.get(activeIndex).kind))
             Qt.callLater(function() { rowTypeList.forceActiveFocus() })
+        }
+        Shortcut {
+            sequence: "Up"
+            context: Qt.WindowShortcut
+            enabled: rowTypePopup.visible
+            onActivated: {
+                rowTypeList.currentIndex = rowTypeList.currentIndex <= 0
+                        ? rowTypeList.count - 1 : rowTypeList.currentIndex - 1
+                rowTypeList.positionViewAtIndex(rowTypeList.currentIndex, ListView.Contain)
+            }
+        }
+        Shortcut {
+            sequence: "Down"
+            context: Qt.WindowShortcut
+            enabled: rowTypePopup.visible
+            onActivated: {
+                rowTypeList.currentIndex = rowTypeList.currentIndex >= rowTypeList.count - 1
+                        ? 0 : rowTypeList.currentIndex + 1
+                rowTypeList.positionViewAtIndex(rowTypeList.currentIndex, ListView.Contain)
+            }
+        }
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.WindowShortcut
+            enabled: rowTypePopup.visible
+            onActivated: rowTypePopup.applyCurrentType()
         }
         background: Rectangle {
             color: backend.themeBackground
@@ -1223,7 +1255,7 @@ ApplicationWindow {
                 property color optionTextColor: win.textColor
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                model: ["Normal", "Definition", "Theorem", "Proof", "Example"]
+                model: rowTypePopup.labels
                 focus: true
                 keyNavigationWraps: true
                 delegate: ItemDelegate {
@@ -1262,10 +1294,6 @@ ApplicationWindow {
                                               backend.themeAccent.g,
                                               backend.themeAccent.b, 0.72)
                     }
-                }
-                Keys.onReturnPressed: function(event) {
-                    win.setActiveRowKind(model[currentIndex].toLowerCase())
-                    event.accepted = true
                 }
             }
         }

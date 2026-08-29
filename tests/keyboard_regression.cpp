@@ -746,8 +746,28 @@ int main(int argc, char **argv) {
     if (!expect(rowTypeList->property("currentIndex").toInt() == 1,
                 QStringLiteral("Row type keyboard highlight did not move")))
         return 1;
-    QTest::keyClick(window, Qt::Key_Escape);
-    QTest::qWait(100);
+    QTest::keyClick(window, Qt::Key_Up);
+    QTest::qWait(50);
+    if (!expect(rowTypeList->property("currentIndex").toInt() == 0,
+                QStringLiteral("Up did not move back in the row type menu")))
+        return 1;
+    QTest::keyClick(window, Qt::Key_Down);
+    QTest::keyClick(window, Qt::Key_Return);
+    QTest::qWait(400);
+    QVariant selectedTypeLines;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, selectedTypeLines));
+    if (!expect(!rowTypePopup->property("visible").toBool()
+                    && selectedTypeLines.toList().first().toMap()
+                           .value(QStringLiteral("kind")).toString()
+                           == QStringLiteral("definition"),
+                QStringLiteral("Enter did not apply and close the row type menu "
+                               "(visible %1, kind %2, index %3)")
+                    .arg(rowTypePopup->property("visible").toBool())
+                    .arg(selectedTypeLines.toList().first().toMap()
+                             .value(QStringLiteral("kind")).toString())
+                    .arg(rowTypeList->property("currentIndex").toInt())))
+        return 1;
 
     QMetaObject::invokeMethod(window, "setActiveRowKind",
                               Q_ARG(QVariant, QStringLiteral("theorem")));
