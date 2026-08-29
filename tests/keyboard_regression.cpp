@@ -4,12 +4,15 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTest>
+#include <QTemporaryDir>
 
 #include <cstdio>
 
@@ -77,7 +80,8 @@ int main(int argc, char **argv) {
     const QStringList edgeButtonNames{
         QStringLiteral("settingsEdgeButton"), QStringLiteral("helpEdgeButton"),
         QStringLiteral("syntaxEdgeButton"), QStringLiteral("viewEdgeButton"),
-        QStringLiteral("exportEdgeButton"), QStringLiteral("guideHeaderButton")
+        QStringLiteral("exportEdgeButton"), QStringLiteral("guideHeaderButton"),
+        QStringLiteral("figureEdgeButton"), QStringLiteral("slidesEdgeButton")
     };
     QList<QObject *> edgeButtons;
     for (const QString &name : edgeButtonNames)
@@ -322,6 +326,82 @@ int main(int argc, char **argv) {
                     && documentScrollBar->property("opacity").toReal() < 0.1,
                 QStringLiteral("Document scroll bar did not fade after scrolling")))
         return 1;
+
+    QTemporaryDir slideCourse;
+    const QString slidePdf = slideCourse.path() + QStringLiteral("/slides.pdf");
+    {
+        QPdfWriter writer(slidePdf);
+        QPainter painter(&writer);
+        painter.drawText(QPoint(100, 100), QStringLiteral("Lecture slide"));
+        painter.end();
+    }
+    QVariantMap slideData{
+        {QStringLiteral("title"), QStringLiteral("Slide test")},
+        {QStringLiteral("sourcePdf"), slidePdf},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("linked note")}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, slideData),
+                              Q_ARG(QVariant, slideCourse.path()
+                                    + QStringLiteral("/notes.foldtex")));
+    window->setProperty("pdfOpen", true);
+    window->setWidth(980);
+    QTest::qWait(250);
+    QObject *notePane = window->findChild<QObject *>(QStringLiteral("notePane"));
+    QObject *pdfPane = window->findChild<QObject *>(QStringLiteral("pdfPane"));
+    QObject *pdfView = window->findChild<QObject *>(QStringLiteral("pdfView"));
+    QObject *figurePopup = window->findChild<QObject *>(QStringLiteral("figureEditorPopup"));
+    QObject *figureCanvas = window->findChild<QObject *>(QStringLiteral("figureCanvas"));
+    if (!expect(notePane && pdfPane && pdfView && figurePopup && figureCanvas,
+                QStringLiteral("Figure editor or slide split was not found"))
+        || !expect(notePane->property("visible").toBool()
+                       && pdfPane->property("visible").toBool(),
+                   QStringLiteral("Wide slide view did not show note and PDF together")))
+        return 1;
+    window->setWidth(700);
+    QTest::qWait(50);
+    if (!expect(!notePane->property("visible").toBool()
+                    && pdfPane->property("visible").toBool(),
+                QStringLiteral("Narrow slide view did not switch to PDF-only mode")))
+        return 1;
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QTest::qWait(50);
+    QMetaObject::invokeMethod(window, "linkActiveRowToSlide");
+    QVariant linkedLines;
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, linkedLines));
+    if (!expect(linkedLines.toList().first().toMap().value(QStringLiteral("slide")).toInt() == 0,
+                QStringLiteral("Active row did not link to the current slide")))
+        return 1;
+    QMetaObject::invokeMethod(figurePopup, "open");
+    QTest::qWait(400);
+    figurePopup->setProperty("tool", QStringLiteral("arrow"));
+    QMetaObject::invokeMethod(figurePopup, "beginAction", Q_ARG(QVariant, 30), Q_ARG(QVariant, 30));
+    QMetaObject::invokeMethod(figurePopup, "finishAction", Q_ARG(QVariant, 120), Q_ARG(QVariant, 90));
+    if (!expect(figurePopup->property("actions").toList().size() == 1,
+                QStringLiteral("Figure editor did not store an arrow")))
+        return 1;
+    QMetaObject::invokeMethod(figurePopup, "saveFigure");
+    QTest::qWait(1000);
+    QVariant figureLines;
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, figureLines));
+    const QVariantList savedFigureLines = figureLines.toList();
+    const QString figurePath = savedFigureLines.size() > 1
+        ? savedFigureLines.at(1).toMap().value(QStringLiteral("asset")).toString()
+        : QString();
+    if (!expect(!figurePath.isEmpty() && QFile::exists(figurePath),
+                QStringLiteral("Figure editor did not save and insert its drawing"))) {
+        std::fprintf(stderr, "figure rows=%lld path=%s visible=%d actions=%lld\n",
+                     static_cast<long long>(savedFigureLines.size()), qPrintable(figurePath),
+                     figurePopup->property("visible").toBool(),
+                     static_cast<long long>(figurePopup->property("actions").toList().size()));
+        std::fprintf(stderr, "canvas=%gx%g document=%s\n",
+                     figureCanvas->property("width").toDouble(),
+                     figureCanvas->property("height").toDouble(),
+                     qPrintable(figurePopup->property("documentPath").toString()));
+        return 1;
+    }
+    window->setWidth(980);
 
     QMetaObject::invokeMethod(dialog, "open");
     window->requestActivate();

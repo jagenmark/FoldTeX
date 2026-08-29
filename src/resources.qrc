@@ -2,5 +2,6 @@
   <qresource prefix="/">
     <file>Main.qml</file>
     <file>GuideWindow.qml</file>
+    <file>FigureEditor.qml</file>
   </qresource>
 </RCC>

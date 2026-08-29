@@ -49,6 +49,13 @@ public:
     Q_INVOKABLE QVariantMap importAsset(const QString &documentUrl,
                                         const QString &sourceUrl) const;
     Q_INVOKABLE QVariantMap importClipboardImage(const QString &documentUrl) const;
+    Q_INVOKABLE QVariantMap importPdf(const QString &documentUrl,
+                                      const QString &sourceUrl) const;
+    Q_INVOKABLE QVariantMap newFigureAsset(const QString &documentUrl) const;
+    Q_INVOKABLE bool saveFigure(const QString &path, const QString &actionsJson,
+                                int width, int height, const QString &background,
+                                const QString &foreground, const QString &fontFamily) const;
+    Q_INVOKABLE QString fileUrl(const QString &path) const;
     Q_INVOKABLE QString latexHint(const QString &source,
                                   const QString &compilerError) const;
     Q_INVOKABLE void setEditorFont(const QString &family, int pixelSize);

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
+import QtQuick.Pdf
 import QtQuick.Window
 
 ApplicationWindow {
@@ -27,6 +28,7 @@ ApplicationWindow {
     property string lectureName: ""
     property string lectureDate: ""
     property string sourcePdf: ""
+    property bool pdfOpen: false
     property string saveStatus: "Saved"
     property int displayMode: 0
     property int selectionAnchor: -1
@@ -54,9 +56,11 @@ ApplicationWindow {
     readonly property bool hasLineSelection: selectionAnchor >= 0 && selectionEnd >= 0
     readonly property int firstSelectedLine: Math.min(selectionAnchor, selectionEnd)
     readonly property int lastSelectedLine: Math.max(selectionAnchor, selectionEnd)
-    readonly property real marginScale: Math.max(0, Math.min(1, (width - minimumWidth) / (980 - minimumWidth)))
+    readonly property bool widePdfSplit: pdfOpen && width >= 900
+    readonly property real noteWidth: notePane.width > 0 ? notePane.width : width
+    readonly property real marginScale: Math.max(0, Math.min(1, (noteWidth - minimumWidth) / (980 - minimumWidth)))
     readonly property int pageMargin: 16 + (backend.editorSideMargin - 16) * marginScale
-    readonly property int pageWidth: width - 2 * pageMargin
+    readonly property int pageWidth: Math.max(180, noteWidth - 2 * pageMargin)
     readonly property color textColor: backend.themeForeground
     readonly property color mutedColor: Qt.rgba(textColor.r, textColor.g, textColor.b, 0.48)
     readonly property string editorFont: backend.editorFontFamily
@@ -336,6 +340,7 @@ ApplicationWindow {
         lectureName = ""
         lectureDate = ""
         sourcePdf = ""
+        pdfOpen = false
         displayMode = 0
         modified = false
         loading = false
@@ -708,6 +713,70 @@ ApplicationWindow {
         addImportedImage(backend.importClipboardImage(documentPath))
     }
 
+    function openFigureEditor() {
+        if (!documentPath.length) {
+            messageDialog.message = "Save the note before drawing a figure"
+            messageDialog.open()
+            return
+        }
+        figureEditor.open()
+    }
+
+    function attachPdf(result) {
+        if (result.error) {
+            messageDialog.message = result.error
+            messageDialog.open()
+            return
+        }
+        recordHistory()
+        sourcePdf = result.path
+        pdfOpen = true
+        changed()
+    }
+
+    function togglePdf() {
+        if (!sourcePdf.length) {
+            slidesDialog.open()
+            return
+        }
+        pdfOpen = !pdfOpen
+    }
+
+    function linkActiveRowToSlide() {
+        if (!sourcePdf.length || activeIndex < 0 || activeIndex >= lines.count
+                || pdfView.currentPage < 0) return
+        recordHistory()
+        lines.setProperty(activeIndex, "slide", pdfView.currentPage)
+        changed()
+        saveStatus = "Linked to slide " + (pdfView.currentPage + 1)
+    }
+
+    function openRowSlide(index) {
+        if (!sourcePdf.length || index < 0 || index >= lines.count
+                || lines.get(index).slide < 0) return
+        pdfOpen = true
+        var page = lines.get(index).slide
+        Qt.callLater(function() { pdfView.goToPage(page) })
+    }
+
+    function captureSlide() {
+        if (!sourcePdf.length || pdfView.currentPage < 0) return
+        var target = backend.newFigureAsset(documentPath)
+        if (target.error) {
+            messageDialog.message = target.error
+            messageDialog.open()
+            return
+        }
+        pdfView.grabToImage(function(result) {
+            if (!result.saveToFile(target.path)) {
+                messageDialog.message = "Could not capture this slide"
+                messageDialog.open()
+                return
+            }
+            win.addImportedImage({ path: target.path })
+        })
+    }
+
     function runCourseSearch() {
         courseResults.clear()
         var found = backend.searchCourse(documentPath, courseSearchInput.text)
@@ -831,6 +900,7 @@ ApplicationWindow {
         lectureName = data.lecture || ""
         lectureDate = data.lectureDate || ""
         sourcePdf = data.sourcePdf || ""
+        pdfOpen = false
         var loaded = data.lines || []
         for (var i = 0; i < loaded.length; ++i) {
             var item = loaded[i]
@@ -941,6 +1011,11 @@ ApplicationWindow {
     ListModel { id: commandResults }
     ListModel { id: courseResults }
 
+    PdfDocument {
+        id: lecturePdf
+        source: win.sourcePdf.length ? backend.fileUrl(win.sourcePdf) : ""
+    }
+
     Shortcut { sequence: StandardKey.Save; onActivated: documentPath ? saveTo(documentPath) : saveDialog.open() }
     Shortcut { sequence: StandardKey.Undo; context: Qt.ApplicationShortcut; onActivated: undoDocument() }
     Shortcut { sequence: StandardKey.Redo; context: Qt.ApplicationShortcut; onActivated: redoDocument() }
@@ -957,6 +1032,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Alt+L"; context: Qt.ApplicationShortcut; onActivated: lectureDialog.open() }
     Shortcut { sequence: "Ctrl+Alt+F"; context: Qt.ApplicationShortcut; onActivated: courseSearchPopup.open() }
     Shortcut { sequence: "Ctrl+Shift+V"; context: Qt.ApplicationShortcut; onActivated: pasteClipboardImage() }
+    Shortcut { sequence: "Ctrl+Alt+I"; context: Qt.ApplicationShortcut; onActivated: openFigureEditor() }
+    Shortcut { sequence: "Ctrl+Alt+P"; context: Qt.ApplicationShortcut; onActivated: togglePdf() }
     Shortcut { sequence: "Ctrl+G"; context: Qt.WindowShortcut; onActivated: openGuide() }
     Shortcut { sequence: StandardKey.Find; context: Qt.ApplicationShortcut; onActivated: openSearch() }
     Shortcut { sequence: "Ctrl+Shift+R"; context: Qt.ApplicationShortcut; onActivated: cycleDisplayMode() }
@@ -1725,6 +1802,9 @@ ApplicationWindow {
                   + "Ctrl+K                Find LaTeX syntax\n"
                   + "Ctrl+Shift+R          Auto / source / rendered view\n"
                   + "Ctrl+Shift+E          Export TeX or PDF\n"
+                  + "Ctrl+Shift+V          Paste an image\n"
+                  + "Ctrl+Alt+I            Draw a figure\n"
+                  + "Ctrl+Alt+P            Show or add lecture slides\n"
                   + "Ctrl+N                New document\n"
                   + "Ctrl+S                Save\n"
                   + "Ctrl+O                Open\n"
@@ -1822,6 +1902,33 @@ ApplicationWindow {
         }
     }
 
+    Dialogs.FileDialog {
+        id: slidesDialog
+        title: "Add lecture slides"
+        fileMode: Dialogs.FileDialog.OpenFile
+        nameFilters: ["PDF documents (*.pdf)"]
+        onAccepted: win.attachPdf(backend.importPdf(win.documentPath,
+                                                    selectedFile.toString()))
+    }
+
+    FigureEditor {
+        id: figureEditor
+        objectName: "figureEditorPopup"
+        parent: Overlay.overlay
+        backendApi: backend
+        documentPath: win.documentPath
+        backgroundColor: win.color
+        foregroundColor: win.textColor
+        mutedColor: win.mutedColor
+        accentColor: backend.themeAccent
+        writingFont: win.editorFont
+        onFigureSaved: function(path) { win.addImportedImage({ path: path }) }
+        onSaveFailed: function(message) {
+            messageDialog.message = message
+            messageDialog.open()
+        }
+    }
+
     Item {
         id: edgeMenuArea
         anchors.top: parent.top
@@ -1853,7 +1960,7 @@ ApplicationWindow {
                 id: edgeMenuColumn
                 anchors.fill: parent
                 anchors.margins: 3
-                implicitHeight: 240
+                implicitHeight: 320
             }
         }
     }
@@ -2053,6 +2160,52 @@ ApplicationWindow {
             }
 
             ToolButton {
+                objectName: "figureEdgeButton"
+                parent: edgeMenuColumn
+                x: 0
+                y: 240
+                width: 40
+                height: 40
+                text: "✎"
+                flat: true
+                onClicked: win.openFigureEditor()
+                ToolTip.visible: hovered
+                ToolTip.text: "Draw figure  Ctrl+Alt+I"
+                contentItem: Text {
+                    text: parent.text
+                    color: win.textColor
+                    font.family: win.editorFont
+                    font.pixelSize: 18
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            ToolButton {
+                objectName: "slidesEdgeButton"
+                parent: edgeMenuColumn
+                x: 0
+                y: 280
+                width: 40
+                height: 40
+                text: "▥"
+                flat: true
+                onClicked: win.togglePdf()
+                ToolTip.visible: hovered
+                ToolTip.text: sourcePdf.length
+                                  ? "Show or hide slides  Ctrl+Alt+P"
+                                  : "Add lecture slides  Ctrl+Alt+P"
+                contentItem: Text {
+                    text: parent.text
+                    color: win.textColor
+                    font.family: win.editorFont
+                    font.pixelSize: 17
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            ToolButton {
                 objectName: "settingsEdgeButton"
                 parent: edgeMenuColumn
                 x: 0
@@ -2083,17 +2236,29 @@ ApplicationWindow {
             color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.08)
         }
 
-        ListView {
-            id: list
-            objectName: "documentList"
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            model: lines
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            spacing: 2
-            topMargin: 46
-            bottomMargin: 120
+            spacing: 0
+
+            Item {
+                id: notePane
+                objectName: "notePane"
+                visible: !win.pdfOpen || win.widePdfSplit
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredWidth: win.widePdfSplit ? win.width * 0.54 : win.width
+
+            ListView {
+                id: list
+                objectName: "documentList"
+                anchors.fill: parent
+                model: lines
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                spacing: 2
+                topMargin: 46
+                bottomMargin: 120
 
             WheelHandler {
                 target: null
@@ -2193,6 +2358,31 @@ ApplicationWindow {
                     text: "⚠"
                     color: "#ff6b63"
                     font.pixelSize: 17
+                }
+
+                Rectangle {
+                    visible: row.slide >= 0
+                    anchors.right: contentLoader.right
+                    anchors.top: parent.top
+                    anchors.topMargin: 2
+                    z: 4
+                    width: slideText.implicitWidth + 12
+                    height: slideText.implicitHeight + 6
+                    radius: height / 2
+                    color: Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
+                                   backend.themeAccent.b, 0.22)
+                    border.width: 1
+                    border.color: Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
+                                          backend.themeAccent.b, 0.6)
+                    Text {
+                        id: slideText
+                        anchors.centerIn: parent
+                        text: "slide " + (row.slide + 1)
+                        color: win.textColor
+                        font.family: win.editorFont
+                        font.pixelSize: Math.max(10, win.editorSize - 6)
+                    }
+                    TapHandler { onTapped: win.openRowSlide(row.index) }
                 }
 
                 TapHandler {
@@ -2401,6 +2591,96 @@ ApplicationWindow {
                     implicitWidth: 3
                     radius: width / 2
                     color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.48)
+                }
+            }
+            }
+            }
+
+            Rectangle {
+                visible: win.widePdfSplit
+                Layout.fillHeight: true
+                Layout.preferredWidth: 1
+                color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.12)
+            }
+
+            Item {
+                id: pdfPane
+                objectName: "pdfPane"
+                visible: win.pdfOpen
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredWidth: win.widePdfSplit ? win.width * 0.46 : win.width
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        Layout.leftMargin: 8
+                        Layout.rightMargin: 8
+                        spacing: 2
+
+                        ToolButton {
+                            text: "‹"
+                            enabled: pdfView.currentPage > 0
+                            onClicked: pdfView.goToPage(pdfView.currentPage - 1)
+                        }
+                        Text {
+                            text: lecturePdf.pageCount > 0
+                                  ? (pdfView.currentPage + 1) + " / " + lecturePdf.pageCount
+                                  : "Loading…"
+                            color: win.mutedColor
+                            font.family: win.editorFont
+                            font.pixelSize: 12
+                        }
+                        ToolButton {
+                            text: "›"
+                            enabled: pdfView.currentPage + 1 < lecturePdf.pageCount
+                            onClicked: pdfView.goToPage(pdfView.currentPage + 1)
+                        }
+                        Item { Layout.fillWidth: true }
+                        ToolButton {
+                            text: "↳"
+                            onClicked: win.linkActiveRowToSlide()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Link active row to this slide"
+                        }
+                        ToolButton {
+                            text: "▣"
+                            onClicked: win.captureSlide()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Capture visible slide area into the note"
+                        }
+                        ToolButton {
+                            text: "…"
+                            onClicked: slidesDialog.open()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Choose another PDF"
+                        }
+                        ToolButton {
+                            text: "×"
+                            onClicked: win.pdfOpen = false
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Hide slides"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: Qt.rgba(win.textColor.r, win.textColor.g,
+                                       win.textColor.b, 0.1)
+                    }
+
+                    PdfMultiPageView {
+                        id: pdfView
+                        objectName: "pdfView"
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        document: lecturePdf
+                    }
                 }
             }
         }

@@ -2,6 +2,7 @@
 
 #include <QCryptographicHash>
 #include <QClipboard>
+#include <QColor>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -15,6 +16,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QProcess>
+#include <QPainter>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSettings>
@@ -22,6 +24,7 @@
 #include <QTextStream>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QtMath>
 #include <QUrl>
 #include <QUuid>
 
@@ -438,6 +441,119 @@ QVariantMap Backend::importClipboardImage(const QString &documentUrl) const {
         return {{QStringLiteral("error"), QStringLiteral("Could not save the image")}};
     return {{QStringLiteral("path"), target},
             {QStringLiteral("url"), QUrl::fromLocalFile(target).toString()}};
+}
+
+QVariantMap Backend::importPdf(const QString &documentUrl,
+                               const QString &sourceUrl) const {
+    if (documentUrl.isEmpty())
+        return {{QStringLiteral("error"), QStringLiteral("Save the note before adding slides")}};
+    const QString source = localPath(sourceUrl);
+    const QFileInfo sourceInfo(source);
+    if (!sourceInfo.isFile())
+        return {{QStringLiteral("error"), QStringLiteral("PDF file not found")}};
+    QFile sourceFile(source);
+    if (!sourceFile.open(QIODevice::ReadOnly)
+        || sourceFile.read(5) != QByteArrayLiteral("%PDF-"))
+        return {{QStringLiteral("error"), QStringLiteral("This is not a PDF file")}};
+
+    const QFileInfo documentInfo(localPath(documentUrl));
+    const QString assetDirectory = documentInfo.absolutePath()
+        + QStringLiteral("/.foldtex-assets");
+    if (!QDir().mkpath(assetDirectory))
+        return {{QStringLiteral("error"), QStringLiteral("Could not create the course asset folder")}};
+    sourceFile.seek(0);
+    const QByteArray digest = QCryptographicHash::hash(
+        sourceFile.readAll(), QCryptographicHash::Sha256).toHex().left(12);
+    QString base = sourceInfo.completeBaseName();
+    base.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")),
+                 QStringLiteral("-"));
+    if (base.isEmpty())
+        base = QStringLiteral("slides");
+    const QString target = assetDirectory + QLatin1Char('/')
+        + QString::fromLatin1(digest) + QLatin1Char('-') + base + QStringLiteral(".pdf");
+    if (!QFile::exists(target) && !QFile::copy(source, target))
+        return {{QStringLiteral("error"), QStringLiteral("Could not copy the PDF")}};
+    return {{QStringLiteral("path"), target},
+            {QStringLiteral("url"), QUrl::fromLocalFile(target).toString()}};
+}
+
+QVariantMap Backend::newFigureAsset(const QString &documentUrl) const {
+    if (documentUrl.isEmpty())
+        return {{QStringLiteral("error"), QStringLiteral("Save the note before drawing a figure")}};
+    const QFileInfo documentInfo(localPath(documentUrl));
+    const QString assetDirectory = documentInfo.absolutePath() + QLatin1Char('/')
+        + documentInfo.completeBaseName() + QStringLiteral(".assets");
+    if (!QDir().mkpath(assetDirectory))
+        return {{QStringLiteral("error"), QStringLiteral("Could not create the image folder")}};
+    const QString target = assetDirectory + QLatin1Char('/')
+        + QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".png");
+    return {{QStringLiteral("path"), target},
+            {QStringLiteral("url"), QUrl::fromLocalFile(target).toString()}};
+}
+
+bool Backend::saveFigure(const QString &path, const QString &actionsJson,
+                         int width, int height, const QString &background,
+                         const QString &foreground, const QString &fontFamily) const {
+    if (path.isEmpty() || width < 1 || height < 1)
+        return false;
+    QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(background));
+    const QVariantList actions = QJsonDocument::fromJson(actionsJson.toUtf8())
+                                     .array().toVariantList();
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    for (const QVariant &value : actions) {
+        const QVariantMap action = value.toMap();
+        const QString type = action.value(QStringLiteral("type")).toString();
+        const QColor color(type == QStringLiteral("eraser") ? background : foreground);
+        painter.setPen(QPen(color, type == QStringLiteral("eraser") ? 22 : 3,
+                            Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        if (type == QStringLiteral("pen") || type == QStringLiteral("eraser")) {
+            const QVariantList points = action.value(QStringLiteral("points")).toList();
+            for (int i = 1; i < points.size(); ++i) {
+                const QVariantMap from = points.at(i - 1).toMap();
+                const QVariantMap to = points.at(i).toMap();
+                painter.drawLine(QPointF(from.value(QStringLiteral("x")).toReal(),
+                                         from.value(QStringLiteral("y")).toReal()),
+                                 QPointF(to.value(QStringLiteral("x")).toReal(),
+                                         to.value(QStringLiteral("y")).toReal()));
+            }
+        } else if (type == QStringLiteral("text")) {
+            QFont font = painter.font();
+            font.setFamily(fontFamily);
+            font.setPixelSize(qMax(8, action.value(QStringLiteral("size"), 22).toInt()));
+            painter.setFont(font);
+            painter.drawText(QPointF(action.value(QStringLiteral("x")).toReal(),
+                                     action.value(QStringLiteral("y")).toReal()),
+                             action.value(QStringLiteral("text")).toString());
+        } else {
+            const QPointF from(action.value(QStringLiteral("x1")).toReal(),
+                               action.value(QStringLiteral("y1")).toReal());
+            const QPointF to(action.value(QStringLiteral("x2")).toReal(),
+                             action.value(QStringLiteral("y2")).toReal());
+            if (type == QStringLiteral("box")) {
+                painter.drawRect(QRectF(from, to).normalized());
+            } else {
+                painter.drawLine(from, to);
+                if (type == QStringLiteral("arrow")) {
+                    const QLineF line(from, to);
+                    const qreal angle = qDegreesToRadians(-line.angle());
+                    constexpr qreal arrowSize = 13;
+                    painter.drawLine(to, to - QPointF(arrowSize * qCos(angle - M_PI / 6),
+                                                       arrowSize * qSin(angle - M_PI / 6)));
+                    painter.drawLine(to, to - QPointF(arrowSize * qCos(angle + M_PI / 6),
+                                                       arrowSize * qSin(angle + M_PI / 6)));
+                }
+            }
+        }
+    }
+    painter.end();
+    return image.save(localPath(path), "PNG");
+}
+
+QString Backend::fileUrl(const QString &path) const {
+    return path.isEmpty() ? QString() : QUrl::fromLocalFile(localPath(path)).toString();
 }
 
 QString Backend::latexHint(const QString &source, const QString &compilerError) const {

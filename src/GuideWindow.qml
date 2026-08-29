@@ -162,6 +162,18 @@ Window {
             body: "Check that every opening brace has a closing brace. Keep prose on its own FoldTeX row. Do not use linebreak between a formula and prose. Write text{words}, not text words.",
             code: "\\text{correct words}\n\\frac{complete}{groups}\n\\sqrt[3]{complete root}",
             keywords: "error missing inserted brace linebreak wrong debug"
+        },
+        {
+            title: "Figures",
+            body: "Press Ctrl+Alt+I to draw beside your notes. The figure tool has a pen, eraser, lines, arrows, boxes, and text. Save inserts the figure as its own note row.",
+            code: "Ctrl+Alt+I",
+            keywords: "figure drawing draw pen eraser line arrow box text diagram"
+        },
+        {
+            title: "Lecture slides",
+            body: "Press Ctrl+Alt+P and choose a PDF. FoldTeX copies it beside the saved note, then shows the slides next to the note when the window is wide. Link the active row to the current slide with the arrow button.",
+            code: "Ctrl+Alt+P",
+            keywords: "slide slides pdf lecture split link page copy"
         }
     ]
 

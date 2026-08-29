@@ -28,6 +28,10 @@ they have not been tested.
   at row bounds.
 - Set the writing font, size, and side margin. The margin shrinks on narrow
   windows, and both source and rendered math track the chosen size.
+- Draw figures with a pen, eraser, lines, arrows, boxes, and text, then insert
+  them as image rows.
+- Copy a lecture PDF beside a saved note and view it next to the note. Link a
+  row to a slide or capture the visible slide area as an image row.
 
 ## Shortcuts
 
@@ -48,6 +52,8 @@ they have not been tested.
 - `Ctrl+Alt+L`: set course and lecture details
 - `Ctrl+Alt+F`: search notes in the current note's folder
 - `Ctrl+Shift+V`: paste a clipboard image into a saved note
+- `Ctrl+Alt+I`: draw a figure
+- `Ctrl+Alt+P`: add, show, or hide lecture slides
 - `Ctrl+Shift+R`: cycle through automatic, source, and rendered views
 - `Ctrl+Shift+E`: export as TeX or PDF
 - `Ctrl+'`, `Ctrl+,`, or `Ctrl+Shift+F`: set the font, size, and side margin
@@ -56,6 +62,17 @@ they have not been tested.
 The right-edge controls open the same settings, help, LaTeX finder, view,
 export, and guide tools. The guide also supports Up, Down, Page Up, Page Down,
 and Escape.
+
+## Figures and lecture slides
+
+The figure tool saves drawings beside the note in its `.assets` folder. It has
+a pen, eraser, straight line, arrow, box, text, undo, and clear.
+
+Lecture PDFs open beside the note when the window is wide. On a small window,
+FoldTeX switches between the note and slides. It copies an added PDF into
+`.foldtex-assets` beside the saved note, so moving the original does not break
+the note. The slide tools can link the active row to the current page or capture
+the visible slide area as an image row.
 
 ## Dependencies
 

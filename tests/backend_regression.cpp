@@ -7,9 +7,12 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QTemporaryDir>
+#include <QUrl>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -127,6 +130,35 @@ int main(int argc, char **argv) {
         || backend.latexHint(QStringLiteral("x"), QStringLiteral("Missing $ inserted."))
             != QStringLiteral("Could not render this row")) {
         qCritical() << "FAIL: LaTeX hints are not specific and safe";
+        return 1;
+    }
+    const QString sourcePdf = course.path() + QStringLiteral("/source.pdf");
+    {
+        QPdfWriter writer(sourcePdf);
+        QPainter painter(&writer);
+        painter.drawText(QPoint(100, 100), QStringLiteral("FoldTeX slide"));
+        painter.end();
+    }
+    const QVariantMap firstPdfImport = backend.importPdf(firstNote, sourcePdf);
+    const QVariantMap secondPdfImport = backend.importPdf(firstNote, sourcePdf);
+    const QString copiedPdf = firstPdfImport.value(QStringLiteral("path")).toString();
+    const QVariantMap figureAsset = backend.newFigureAsset(firstNote);
+    const QString figurePath = figureAsset.value(QStringLiteral("path")).toString();
+    const bool figureSaved = backend.saveFigure(
+        figurePath,
+        QStringLiteral("[{\"type\":\"arrow\",\"x1\":10,\"y1\":10,\"x2\":90,\"y2\":60}]"),
+        120, 80, QStringLiteral("#101010"), QStringLiteral("#eeeeee"),
+        QStringLiteral("monospace"));
+    if (!firstPdfImport.value(QStringLiteral("error")).toString().isEmpty()
+        || copiedPdf.isEmpty() || !QFile::exists(copiedPdf)
+        || !copiedPdf.contains(QStringLiteral("/.foldtex-assets/"))
+        || secondPdfImport.value(QStringLiteral("path")) != copiedPdf
+        || !figureAsset.value(QStringLiteral("path")).toString()
+                .contains(QStringLiteral("lecture-1.assets/"))
+        || !figureSaved || !QFile::exists(figurePath)
+        || backend.fileUrl(copiedPdf) != QUrl::fromLocalFile(copiedPdf).toString()) {
+        qCritical() << "FAIL: copied PDF or figure asset" << firstPdfImport
+                    << secondPdfImport << figureAsset;
         return 1;
     }
     qInfo() << "PASS: multiline source became separate render rows";
