@@ -38,6 +38,66 @@ Window {
             keywords: "foldtex enter row prose text render dollar"
         },
         {
+            title: "Fast LaTeX snippets",
+            body: "Type a short name and press Tab. FoldTeX expands sqrt, root, frac, sum, prod, int, lim, cases, and mat2. Tab then moves through the parts you need to replace.",
+            code: "frac  then Tab\nroot  then Tab\nmat2  then Tab",
+            keywords: "snippet tab fast template placeholder sqrt root frac sum product integral limit cases matrix"
+        },
+        {
+            title: "Find text or LaTeX",
+            body: "Ctrl+F finds and replaces words in both prose and the source behind rendered math. Ctrl+K searches common LaTeX by plain names such as root, fraction, or integral.",
+            code: "Ctrl+F   find in this note\nCtrl+K   find LaTeX syntax",
+            keywords: "find search replace latex command syntax ctrl f k"
+        },
+        {
+            title: "Select and edit rows",
+            body: "Shift-click or use Shift+Up and Shift+Down to select rows. Copy, cut, Backspace, and Delete act on the selection. Ctrl+Shift+A selects every row. Pasted text with line breaks becomes separate rows.",
+            code: "Shift+Up / Shift+Down\nCtrl+Shift+A",
+            keywords: "select rows lines copy cut delete paste multiline join backspace"
+        },
+        {
+            title: "Undo and redo",
+            body: "Ctrl+Z undoes changes across the whole note. Ctrl+Shift+Z redoes them. A snippet expansion counts as one change.",
+            code: "Ctrl+Z\nCtrl+Shift+Z",
+            keywords: "undo redo history restore change"
+        },
+        {
+            title: "Save, open, and recover",
+            body: "Ctrl+N starts a note. Ctrl+S saves, Ctrl+Shift+S saves as, and Ctrl+O opens a note. FoldTeX keeps recovery data as you type and up to 30 timed snapshots.",
+            code: "Ctrl+N   new\nCtrl+S   save\nCtrl+Shift+S   save as\nCtrl+O   open",
+            keywords: "new save save as open recovery snapshot autosave file document"
+        },
+        {
+            title: "Source, rendered view, and export",
+            body: "Ctrl+Shift+R cycles through automatic, all-source, and all-rendered views. Ctrl+Shift+E exports the note as a TeX file or PDF.",
+            code: "Ctrl+Shift+R   change view\nCtrl+Shift+E   export",
+            keywords: "source raw rendered automatic view toggle export tex pdf"
+        },
+        {
+            title: "Definitions, theorems, and proofs",
+            body: "Ctrl+period marks the active row as a definition, theorem, proof, example, or normal row. Ctrl+M adds a timed catch-up mark when the lecture moves ahead.",
+            code: "Ctrl+.   choose row type\nCtrl+M   add catch-up mark",
+            keywords: "definition theorem proof example row type catch up marker lecture"
+        },
+        {
+            title: "Courses and lecture details",
+            body: "Ctrl+Alt+L sets the course, lecture name, and date. Ctrl+Alt+F searches every FoldTeX note in the current note's folder.",
+            code: "Ctrl+Alt+L   lecture details\nCtrl+Alt+F   search course notes",
+            keywords: "course lecture date details search folder notes university"
+        },
+        {
+            title: "Images",
+            body: "Save the note first, then press Ctrl+Shift+V to paste an image from the clipboard. FoldTeX copies images into an asset folder beside the note and inserts an image row.",
+            code: "Ctrl+Shift+V",
+            keywords: "image picture screenshot clipboard paste asset figure"
+        },
+        {
+            title: "Writing settings",
+            body: "Open Aa with Ctrl+comma, Ctrl+apostrophe, or Ctrl+Shift+F. Choose the font, text size, and side margin. The margin shrinks with the window, and the size applies to source and rendered math.",
+            code: "Ctrl+,\nCtrl+'\nCtrl+Shift+F",
+            keywords: "settings font size margin aa writing scale theme"
+        },
+        {
             title: "Roots",
             body: "Use sqrt for a square root. Put the root number in square brackets for an nth root.",
             code: "\\sqrt{x}\n\\sqrt[3]{x}\n\\sqrt[n]{x_1 + x_2}",

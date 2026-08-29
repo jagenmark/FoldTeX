@@ -150,8 +150,18 @@ int main(int argc, char **argv) {
     if (!expect(guide->transientParent() == nullptr,
                 QStringLiteral("Guide is attached as an oversized child window")))
         return 1;
-    if (!expect(guide->property("sections").toList().size() >= 22,
-                QStringLiteral("LaTeX guide is missing the expanded material")))
+    const QVariantList guideSections = guide->property("sections").toList();
+    QStringList guideTitles;
+    for (const QVariant &section : guideSections)
+        guideTitles.append(section.toMap().value(QStringLiteral("title")).toString());
+    if (!expect(guideSections.size() >= 34
+                    && guideTitles.contains(QStringLiteral("Fast LaTeX snippets"))
+                    && guideTitles.contains(QStringLiteral("Save, open, and recover"))
+                    && guideTitles.contains(QStringLiteral("Definitions, theorems, and proofs"))
+                    && guideTitles.contains(QStringLiteral("Courses and lecture details"))
+                    && guideTitles.contains(QStringLiteral("Figures"))
+                    && guideTitles.contains(QStringLiteral("Lecture slides")),
+                QStringLiteral("Guide is missing current FoldTeX features")))
         return 1;
     guide->setWidth(578);
     guide->setProperty("preferredSideMargin", 100);
