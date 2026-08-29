@@ -2463,14 +2463,21 @@ ApplicationWindow {
                 required property string asset
                 required property int slide
                 readonly property var currentContent: contentLoader.item
+                readonly property real pageLeft: Math.max(0, (width - win.pageWidth) / 2)
+                readonly property real typeInset: hasTypeLabel ? 18 : 0
+                readonly property real contentLeft: contentLoader.x
+                readonly property real displayedContentHeight: currentContent
+                        && currentContent.displayedHeight !== undefined
+                        ? currentContent.displayedHeight : contentLoader.implicitHeight
                 readonly property bool hasTypeLabel: kind !== "normal" && kind !== "image"
                 width: list.width
                 height: Math.max(win.editorSize * 2.8,
-                                 contentLoader.y + contentLoader.implicitHeight + 10)
+                                 contentLoader.y + displayedContentHeight + 10)
 
                 Rectangle {
                     visible: row.hasTypeLabel
-                    anchors.left: contentLoader.left
+                    anchors.left: parent.left
+                    anchors.leftMargin: row.pageLeft
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     width: 2
@@ -2481,8 +2488,8 @@ ApplicationWindow {
 
                 Text {
                     visible: row.hasTypeLabel
-                    anchors.left: contentLoader.left
-                    anchors.leftMargin: 10
+                    anchors.left: parent.left
+                    anchors.leftMargin: row.pageLeft + 10
                     anchors.top: parent.top
                     text: row.label.length ? row.label : row.kind
                     color: row.kind === "catchup" ? "#e2ad5b" : win.mutedColor
@@ -2513,9 +2520,9 @@ ApplicationWindow {
 
                 Loader {
                     id: contentLoader
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    x: row.pageLeft + row.typeInset
                     y: row.hasTypeLabel ? 22 : 0
-                    width: win.pageWidth
+                    width: win.pageWidth - row.typeInset
                     sourceComponent: row.kind === "image" ? imageComponent
                                      : win.displayMode === 1 ? sourceViewComponent
                                      : win.displayMode === 2 ? renderComponent
@@ -2701,7 +2708,9 @@ ApplicationWindow {
                 Component {
                     id: renderComponent
                     Item {
-                        implicitHeight: Math.max(42, visual.implicitHeight)
+                        readonly property real displayedHeight: visual.visible
+                                ? visual.height : plainText.implicitHeight
+                        implicitHeight: Math.max(42, displayedHeight)
                         Text {
                             id: plainText
                             visible: !row.math || row.error.length > 0 || row.renderedUrl.length === 0

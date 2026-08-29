@@ -8,6 +8,7 @@
 #include <QPdfWriter>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QStandardPaths>
@@ -769,8 +770,38 @@ int main(int argc, char **argv) {
                     .arg(rowTypeList->property("currentIndex").toInt())))
         return 1;
 
-    QMetaObject::invokeMethod(window, "setActiveRowKind",
-                              Q_ARG(QVariant, QStringLiteral("theorem")));
+    const QVariantMap typedLayoutData{
+        {QStringLiteral("title"), QStringLiteral("Typed layout")},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("\\frac{a}{b}")},
+                         {QStringLiteral("kind"), QStringLiteral("theorem")}},
+             QVariantMap{{QStringLiteral("source"), QString()}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, typedLayoutData),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(1)));
+    QMetaObject::invokeMethod(window, "renderAll");
+    for (int attempt = 0; attempt < 80
+            && window->property("pendingRenderCount").toInt() > 0; ++attempt)
+        QTest::qWait(50);
+    QTest::qWait(100);
+    QQuickItem *theoremRow = nullptr;
+    QMetaObject::invokeMethod(documentList, "itemAtIndex",
+                              Q_RETURN_ARG(QQuickItem *, theoremRow), Q_ARG(int, 0));
+    if (!expect(theoremRow, QStringLiteral("Rendered theorem row was not found"))
+        || !expect(theoremRow->property("contentLeft").toReal()
+                       >= theoremRow->property("pageLeft").toReal() + 16,
+                   QStringLiteral("Typed row content overlaps its rail: page %1, content %2")
+                       .arg(theoremRow->property("pageLeft").toReal())
+                       .arg(theoremRow->property("contentLeft").toReal()))
+        || !expect(theoremRow->property("height").toReal()
+                       <= theoremRow->property("displayedContentHeight").toReal() + 48,
+                   QStringLiteral("Typed row leaves excess space: row %1, visual %2")
+                       .arg(theoremRow->property("height").toReal())
+                       .arg(theoremRow->property("displayedContentHeight").toReal())))
+        return 1;
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
     QMetaObject::invokeMethod(window, "addCatchupMarker");
     newLines.clear();
     QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
