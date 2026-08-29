@@ -361,11 +361,27 @@ ApplicationWindow {
         Qt.callLater(function() { win.editLine(0) })
     }
 
+    function startNewDocumentWithDetails(title, course, lecture, date) {
+        startNewDocument()
+        documentTitle = title.trim().length ? title.trim()
+                                             : lecture.trim().length ? lecture.trim()
+                                                                     : "Untitled notes"
+        courseName = course.trim()
+        lectureName = lecture.trim()
+        lectureDate = date.trim()
+        resetHistory(true)
+        saveRecoveryNow()
+    }
+
+    function openNewDocumentSetup() {
+        newDocumentSetupDialog.open()
+    }
+
     function requestNewDocument() {
         if (documentHasText() && (modified || !documentPath.length))
             newDocumentDialog.open()
         else
-            startNewDocument()
+            openNewDocumentSetup()
     }
 
     onClosing: saveRecoveryNow()
@@ -1936,7 +1952,7 @@ ApplicationWindow {
                   + "Ctrl+Shift+V          Paste an image\n"
                   + "Ctrl+Alt+I            Draw a figure\n"
                   + "Ctrl+Alt+P            Show or add lecture slides\n"
-                  + "Ctrl+N                New document\n"
+                  + "Ctrl+N                New note details\n"
                   + "Ctrl+S                Save\n"
                   + "Ctrl+O                Open\n"
                   + "Ctrl+Q                Quit\n"
@@ -1972,12 +1988,95 @@ ApplicationWindow {
         title: "New document"
         standardButtons: Dialog.Cancel | Dialog.Ok
         Material.accent: fontDialog.dialogText
-        onAccepted: win.startNewDocument()
+        onAccepted: Qt.callLater(win.openNewDocumentSetup)
         contentItem: Label {
-            text: "Start a new document? Changes not saved to a .foldtex file will be lost."
+            text: "Set up a new note? Changes not saved to a .foldtex file will be lost."
             color: fontDialog.dialogText
             wrapMode: Text.Wrap
             font.family: win.editorFont
+        }
+    }
+
+    Dialog {
+        id: newDocumentSetupDialog
+        objectName: "newDocumentSetupDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(520, win.width - 48)
+        modal: true
+        title: "New note"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        Material.accent: fontDialog.dialogText
+        onAboutToShow: {
+            newTitleField.text = ""
+            newCourseField.text = win.courseName
+            newLectureField.text = ""
+            newLectureDateField.text = Qt.formatDate(new Date(), "yyyy-MM-dd")
+            Qt.callLater(function() { newTitleField.forceActiveFocus() })
+        }
+        onAccepted: win.startNewDocumentWithDetails(newTitleField.text,
+                                                    newCourseField.text,
+                                                    newLectureField.text,
+                                                    newLectureDateField.text)
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.WindowShortcut
+            enabled: newDocumentSetupDialog.visible
+            onActivated: newDocumentSetupDialog.accept()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Label { text: "Note title"; color: fontDialog.dialogText; font.family: win.editorFont }
+            TextField {
+                id: newTitleField
+                objectName: "newTitleField"
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "Lecture 4 — Limits"
+            }
+
+            Label { text: "Course or class"; color: fontDialog.dialogText; font.family: win.editorFont }
+            TextField {
+                id: newCourseField
+                objectName: "newCourseField"
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "Calculus I"
+            }
+
+            Label { text: "Lecture"; color: fontDialog.dialogText; font.family: win.editorFont }
+            TextField {
+                id: newLectureField
+                objectName: "newLectureField"
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "Limits and continuity"
+            }
+
+            Label { text: "Date"; color: fontDialog.dialogText; font.family: win.editorFont }
+            TextField {
+                id: newLectureDateField
+                objectName: "newLectureDateField"
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "2026-08-29"
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: "Leave the title blank to use the lecture name. The current course carries over so the next lecture is quick to set up."
+                color: fontDialog.dialogMuted
+                wrapMode: Text.Wrap
+                font.family: win.editorFont
+                font.pixelSize: Math.max(11, win.editorSize - 2)
+            }
         }
     }
 

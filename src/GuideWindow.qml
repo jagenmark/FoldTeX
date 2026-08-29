@@ -69,9 +69,9 @@ Window {
         },
         {
             title: "Save, open, and recover",
-            body: "Ctrl+N starts a note. Ctrl+S saves, Ctrl+Shift+S saves as, and Ctrl+O opens a note. FoldTeX keeps recovery data as you type and up to 30 timed snapshots.",
-            code: "Ctrl+N   new\nCtrl+S   save\nCtrl+Shift+S   save as\nCtrl+O   open",
-            keywords: "new save save as open recovery snapshot autosave file document"
+            body: "Ctrl+N opens a new-note form for the title, course, lecture, and date. It keeps the current course in the form so you can start the next lecture fast. Ctrl+S saves, Ctrl+Shift+S saves as, and Ctrl+O opens a note. FoldTeX keeps recovery data as you type and up to 30 timed snapshots.",
+            code: "Ctrl+N   new note details\nCtrl+S   save\nCtrl+Shift+S   save as\nCtrl+O   open",
+            keywords: "new title course lecture date save save as open recovery snapshot autosave file document"
         },
         {
             title: "Source, rendered view, and export",
@@ -87,8 +87,8 @@ Window {
         },
         {
             title: "Courses and lecture details",
-            body: "Ctrl+Alt+L sets the course, lecture name, and date. Ctrl+Alt+F searches every FoldTeX note in the current note's folder.",
-            code: "Ctrl+Alt+L   lecture details\nCtrl+Alt+F   search course notes",
+            body: "Set the title, course or class, lecture name, and date when you make a note with Ctrl+N. Ctrl+Alt+L edits the course, lecture name, and date later. Ctrl+Alt+F searches every FoldTeX note in the current note's folder.",
+            code: "Ctrl+N       new note details\nCtrl+Alt+L   edit lecture details\nCtrl+Alt+F   search course notes",
             keywords: "course lecture date details search folder notes university"
         },
         {

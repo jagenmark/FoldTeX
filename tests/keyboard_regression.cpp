@@ -644,6 +644,7 @@ int main(int argc, char **argv) {
 
     QVariantMap savedDocumentData{
         {QStringLiteral("title"), QStringLiteral("Saved note")},
+        {QStringLiteral("course"), QStringLiteral("Calculus I")},
         {QStringLiteral("lines"), QVariantList{
              QVariantMap{{QStringLiteral("source"), QStringLiteral("keep this line")}}
          }}
@@ -652,13 +653,43 @@ int main(int argc, char **argv) {
                               Q_ARG(QVariant, QStringLiteral("/tmp/saved.foldtex")));
     QTest::keyClick(window, Qt::Key_N, Qt::ControlModifier);
     QTest::qWait(100);
+    QObject *newNoteDialog = window->findChild<QObject *>(QStringLiteral("newDocumentSetupDialog"));
+    QObject *newTitleField = window->findChild<QObject *>(QStringLiteral("newTitleField"));
+    QObject *newCourseField = window->findChild<QObject *>(QStringLiteral("newCourseField"));
+    QObject *newLectureField = window->findChild<QObject *>(QStringLiteral("newLectureField"));
+    QObject *newLectureDateField = window->findChild<QObject *>(QStringLiteral("newLectureDateField"));
+    if (!expect(newNoteDialog && newNoteDialog->property("visible").toBool(),
+                QStringLiteral("Ctrl+N did not open the new-note details form"))
+        || !expect(newCourseField
+                       && newCourseField->property("text").toString()
+                              == QStringLiteral("Calculus I"),
+                   QStringLiteral("New-note form did not carry over the current course "
+                                  "(document: '%1', field: '%2')")
+                       .arg(window->property("courseName").toString(),
+                            newCourseField
+                                ? newCourseField->property("text").toString()
+                                : QStringLiteral("missing")))
+        || !expect(newTitleField && newLectureField && newLectureDateField,
+                   QStringLiteral("New-note detail fields were not available")))
+        return 1;
+    newTitleField->setProperty("text", QStringLiteral("Lecture 5 notes"));
+    newLectureField->setProperty("text", QStringLiteral("Derivatives"));
+    newLectureDateField->setProperty("text", QStringLiteral("2026-08-30"));
+    QTest::keyClick(window, Qt::Key_Return);
+    QTest::qWait(100);
     QVariant newLines;
     QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
     const QVariantList blankLines = newLines.toList();
     if (!expect(window->property("documentTitle").toString()
-                    == QStringLiteral("Untitled notes")
+                    == QStringLiteral("Lecture 5 notes")
                     && window->property("documentPath").toString().isEmpty(),
-                QStringLiteral("Ctrl+N did not reset the document identity"))
+                QStringLiteral("New-note form did not set the document identity"))
+        || !expect(window->property("courseName").toString() == QStringLiteral("Calculus I")
+                       && window->property("lectureName").toString()
+                              == QStringLiteral("Derivatives")
+                       && window->property("lectureDate").toString()
+                              == QStringLiteral("2026-08-30"),
+                   QStringLiteral("New-note form did not apply lecture details"))
         || !expect(blankLines.size() == 1
                        && blankLines.first().toMap().value(QStringLiteral("source"))
                               .toString().isEmpty(),

@@ -18,6 +18,8 @@ they have not been tested.
   `root`, `frac`, `sum`, `prod`, `int`, `lim`, `cases`, or `mat2` and press Tab.
 - Mark rows as definitions, theorems, proofs, or examples, and add timed
   catch-up marks.
+- Start a note with its title, course, lecture, and date from the `Ctrl+N`
+  setup form. The current course carries over for the next lecture.
 - Store course and lecture details and search all `.foldtex` notes in the saved
   note's folder.
 - Paste a clipboard image into a saved note. FoldTeX stores it next to the note
@@ -41,7 +43,7 @@ they have not been tested.
 - `Shift+click` or `Shift+Up` / `Shift+Down`: select a range of rows
 - `Ctrl+Shift+A`: select all rows; copy, cut, Backspace, and Delete then act on
   the whole selection
-- `Ctrl+N`: start a new note
+- `Ctrl+N`: set up a new note with its title, course, lecture, and date
 - `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+O`: save, save as, and open
 - `Ctrl+Q`: save recovery data and quit
 - `Ctrl+Z`, `Ctrl+Shift+Z`: undo and redo
