@@ -21,8 +21,9 @@ they have not been tested.
 - Type a short name and press Tab. Along with the core math snippets, FoldTeX
   supports `set`, `union`, `inter`, `abs`, `norm`, `seq`, `series`, `deriv`,
   `eval`, `cint`, `oint`, `epsdel`, `taylor`, and `nn`/`zz`/`qq`/`rr`/`cc`.
-- Mark rows as definitions, theorems, proofs, or examples, and add timed
-  catch-up marks.
+- Write multi-row definitions, theorems, proofs, or examples. Enter continues
+  the current block until you choose `Normal`; timed catch-up marks remain
+  available for missed lecture content.
 - Start a note with its title, course, lecture, and date from the `Ctrl+N`
   setup form. The current course carries over for the next lecture.
 - Store course and lecture details and search all `.foldtex` notes in the saved

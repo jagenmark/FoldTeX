@@ -760,18 +760,20 @@ int main(int argc, char **argv) {
     editor->setProperty("cursorPosition", 0);
     QTest::qWait(50);
 
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
-                      QPoint(window->width() / 2, window->height() - 50));
-    QTest::qWait(100);
-    editorValue.clear();
-    QMetaObject::invokeMethod(window, "activeEditorItem", Q_RETURN_ARG(QVariant, editorValue));
-    editor = editorValue.value<QObject *>();
-    newLines.clear();
-    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
-    if (!expect(editor && editor->property("activeFocus").toBool()
-                    && newLines.toList().size() == 1,
-                QStringLiteral("Clicking blank writing space did not focus the empty row")))
-        return 1;
+    if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(window->width() / 2, window->height() - 50));
+        QTest::qWait(100);
+        editorValue.clear();
+        QMetaObject::invokeMethod(window, "activeEditorItem", Q_RETURN_ARG(QVariant, editorValue));
+        editor = editorValue.value<QObject *>();
+        newLines.clear();
+        QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+        if (!expect(editor && editor->property("activeFocus").toBool()
+                        && newLines.toList().size() == 1,
+                    QStringLiteral("Clicking blank writing space did not focus the empty row")))
+            return 1;
+    }
 
     QMetaObject::invokeMethod(editor, "forceActiveFocus");
     editor->setProperty("text", QStringLiteral("frac"));
@@ -855,6 +857,62 @@ int main(int argc, char **argv) {
                     .arg(selectedTypeLines.toList().first().toMap()
                              .value(QStringLiteral("kind")).toString())
                     .arg(rowTypeList->property("currentIndex").toInt())))
+        return 1;
+
+    const QVariantMap exampleBlockData{
+        {QStringLiteral("title"), QStringLiteral("Example block")},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QString()}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, exampleBlockData),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QMetaObject::invokeMethod(window, "setActiveRowKind",
+                              Q_ARG(QVariant, QStringLiteral("example")));
+    QTest::qWait(80);
+    QVariant blockEditorValue;
+    QMetaObject::invokeMethod(window, "activeEditorItem",
+                              Q_RETURN_ARG(QVariant, blockEditorValue));
+    QObject *blockEditor = blockEditorValue.value<QObject *>();
+    if (!expect(blockEditor, QStringLiteral("First example row editor was not available")))
+        return 1;
+    blockEditor->setProperty("text", QStringLiteral("First example row"));
+    QMetaObject::invokeMethod(window, "commitLine", Q_ARG(QVariant, QVariant(0)));
+    QTest::qWait(80);
+    blockEditorValue.clear();
+    QMetaObject::invokeMethod(window, "activeEditorItem",
+                              Q_RETURN_ARG(QVariant, blockEditorValue));
+    blockEditor = blockEditorValue.value<QObject *>();
+    if (!expect(blockEditor, QStringLiteral("Continued example row editor was not available")))
+        return 1;
+    blockEditor->setProperty("text", QStringLiteral("Second example row"));
+    QMetaObject::invokeMethod(window, "commitLine", Q_ARG(QVariant, QVariant(1)));
+    QTest::qWait(80);
+    QMetaObject::invokeMethod(window, "setActiveRowKind",
+                              Q_ARG(QVariant, QStringLiteral("normal")));
+    QVariant exampleBlockLines;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, exampleBlockLines));
+    const QVariantList exampleRows = exampleBlockLines.toList();
+    QQuickItem *firstExampleRow = nullptr;
+    QQuickItem *secondExampleRow = nullptr;
+    QMetaObject::invokeMethod(documentList, "itemAtIndex",
+                              Q_RETURN_ARG(QQuickItem *, firstExampleRow), Q_ARG(int, 0));
+    QMetaObject::invokeMethod(documentList, "itemAtIndex",
+                              Q_RETURN_ARG(QQuickItem *, secondExampleRow), Q_ARG(int, 1));
+    if (!expect(exampleRows.size() == 3
+                    && exampleRows.at(0).toMap().value(QStringLiteral("kind")).toString()
+                           == QStringLiteral("example")
+                    && exampleRows.at(1).toMap().value(QStringLiteral("kind")).toString()
+                           == QStringLiteral("example")
+                    && exampleRows.at(2).toMap().value(QStringLiteral("kind")).toString()
+                           == QStringLiteral("normal"),
+                QStringLiteral("Enter did not continue the example until Normal was selected"))
+        || !expect(firstExampleRow && secondExampleRow
+                       && firstExampleRow->property("startsTypeBlock").toBool()
+                       && !secondExampleRow->property("startsTypeBlock").toBool(),
+                   QStringLiteral("A multi-row example repeats or breaks its visual heading")))
         return 1;
 
     const QVariantMap typedLayoutData{

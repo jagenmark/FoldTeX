@@ -267,6 +267,20 @@ ApplicationWindow {
         }
     }
 
+    function isContinuingRowKind(kind) {
+        return kind === "definition" || kind === "theorem"
+                || kind === "proof" || kind === "example"
+    }
+
+    function makeLineAfter(index) {
+        if (index >= 0 && index < lines.count) {
+            var prior = lines.get(index)
+            if (isContinuingRowKind(prior.kind))
+                return makeLine("", prior.kind, prior.label)
+        }
+        return makeLine("")
+    }
+
     function serializedLines() {
         var result = []
         for (var i = 0; i < lines.count; ++i) {
@@ -780,7 +794,7 @@ ApplicationWindow {
                                   current.asset, current.slide))
         for (var i = 1; i < parts.length; ++i) {
             var source = parts[i] + (i === parts.length - 1 ? after : "")
-            lines.insert(index + i, makeLine(source))
+            lines.insert(index + i, makeLine(source, current.kind, current.label))
         }
         activeIndex = index + parts.length - 1
         changed()
@@ -847,10 +861,13 @@ ApplicationWindow {
 
     function focusBlankWritingArea() {
         clearLineSelection()
-        var target = Math.max(0, lines.count - 1)
-        if (lines.count === 0 || lines.get(target).kind !== "normal"
-                || lines.get(target).source.length !== 0) {
+        var target = lines.count - 1
+        if (lines.count === 0) {
             lines.append(makeLine(""))
+            target = 0
+            changed()
+        } else if (lines.get(target).source.length !== 0) {
+            lines.append(makeLineAfter(target))
             target = lines.count - 1
             changed()
         }
@@ -877,7 +894,7 @@ ApplicationWindow {
         renderLine(index)
         if (index === lines.count - 1) {
             recordHistory()
-            lines.append(makeLine(""))
+            lines.append(makeLineAfter(index))
         }
         activeIndex = Math.min(index + 1, lines.count - 1)
         changed()
@@ -2771,6 +2788,10 @@ ApplicationWindow {
                         && currentContent.displayedHeight !== undefined
                         ? currentContent.displayedHeight : contentLoader.implicitHeight
                 readonly property bool hasTypeLabel: kind !== "normal" && kind !== "image"
+                readonly property bool startsTypeBlock: hasTypeLabel
+                        && (index === 0 || lines.get(index - 1).kind !== kind)
+                readonly property bool endsTypeBlock: hasTypeLabel
+                        && (index === lines.count - 1 || lines.get(index + 1).kind !== kind)
                 width: list.width
                 height: Math.max(win.editorSize * 2.8,
                                  contentLoader.y + displayedContentHeight + 10)
@@ -2780,7 +2801,9 @@ ApplicationWindow {
                     anchors.left: parent.left
                     anchors.leftMargin: row.pageLeft
                     anchors.top: parent.top
+                    anchors.topMargin: row.startsTypeBlock ? 0 : -list.spacing
                     anchors.bottom: parent.bottom
+                    anchors.bottomMargin: row.endsTypeBlock ? 0 : -list.spacing
                     width: 2
                     radius: 1
                     color: row.kind === "catchup" ? "#e2ad5b" : backend.themeAccent
@@ -2788,7 +2811,7 @@ ApplicationWindow {
                 }
 
                 Text {
-                    visible: row.hasTypeLabel
+                    visible: row.hasTypeLabel && row.startsTypeBlock
                     anchors.left: parent.left
                     anchors.leftMargin: row.pageLeft + 10
                     anchors.top: parent.top
@@ -2822,7 +2845,7 @@ ApplicationWindow {
                 Loader {
                     id: contentLoader
                     x: row.pageLeft + row.typeInset
-                    y: row.hasTypeLabel ? 22 : 0
+                    y: row.hasTypeLabel && row.startsTypeBlock ? 22 : 0
                     width: win.pageWidth - row.typeInset
                     sourceComponent: row.kind === "image" ? imageComponent
                                      : win.displayMode === 1 ? sourceViewComponent

@@ -81,8 +81,8 @@ Window {
         },
         {
             title: "Definitions, theorems, and proofs",
-            body: "Ctrl+period opens the row-type menu. Use Up and Down to choose normal, definition, theorem, proof, or example, then press Enter to apply it. Ctrl+M adds a timed catch-up mark when the lecture moves ahead.",
-            code: "Ctrl+.   choose row type\nCtrl+M   add catch-up mark",
+            body: "Ctrl+period opens the row-type menu. Use Up and Down to choose normal, definition, theorem, proof, or example, then press Enter to apply it. Enter keeps each new row in the same typed block, so an example or proof can span many rows. Choose Normal when you want to end the block. Ctrl+M adds a timed catch-up mark when the lecture moves ahead.",
+            code: "Ctrl+.   choose row type\nEnter    continue the same block\nNormal   end the block\nCtrl+M   add catch-up mark",
             keywords: "definition theorem proof example row type catch up marker lecture"
         },
         {
