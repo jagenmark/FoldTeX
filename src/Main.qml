@@ -154,6 +154,97 @@ ApplicationWindow {
         { name: "Greek pi", insertText: "\\pi", example: "\\pi", keywords: "greek pi circle letter" },
         { name: "Greek sigma", insertText: "\\sigma", example: "\\sigma", keywords: "greek sigma standard deviation letter" }
     ]
+    readonly property var latexCommandSwedishNames: ({
+        "Square root": "Kvadratrot",
+        "Nth root": "N:te rot",
+        "Fraction": "Bråk",
+        "Power": "Potens",
+        "Subscript": "Nedsänkt index",
+        "Sum": "Summa",
+        "Product": "Produkt",
+        "Integral": "Integral",
+        "Limit": "Gränsvärde",
+        "Derivative": "Derivata",
+        "Partial derivative": "Partiell derivata",
+        "Infinity": "Oändlighet",
+        "Plus or minus": "Plus eller minus",
+        "Not equal": "Inte lika med",
+        "Approximately equal": "Ungefär lika med",
+        "Less than or equal": "Mindre än eller lika med",
+        "Greater than or equal": "Större än eller lika med",
+        "Arrow": "Pil",
+        "Vector": "Vektor",
+        "Absolute value": "Absolutbelopp",
+        "Parentheses": "Parenteser",
+        "Matrix": "Matris",
+        "Cases": "Falluppdelning",
+        "Set builder": "Mängdbyggare",
+        "Element of": "Tillhör",
+        "Not an element of": "Tillhör inte",
+        "Subset or equal": "Delmängd eller lika",
+        "Not a subset": "Inte delmängd",
+        "Subset symbol": "Delmängdssymbol",
+        "Proper subset": "Äkta delmängd",
+        "Superset or equal": "Övermängd eller lika",
+        "Not a superset": "Inte övermängd",
+        "Union": "Union",
+        "Intersection": "Snitt",
+        "Set difference": "Mängddifferens",
+        "Set complement": "Mängdkomplement",
+        "Symmetric difference": "Symmetrisk differens",
+        "Cardinality": "Kardinalitet",
+        "Cartesian product": "Kartesisk produkt",
+        "Indexed union": "Indexerad union",
+        "Indexed intersection": "Indexerat snitt",
+        "Empty set": "Tomma mängden",
+        "Power set": "Potensmängd",
+        "Natural numbers": "Naturliga tal",
+        "Integers": "Heltal",
+        "Rational numbers": "Rationella tal",
+        "Real numbers": "Reella tal",
+        "Complex numbers": "Komplexa tal",
+        "For all": "För alla",
+        "There exists": "Det finns",
+        "Does not exist": "Finns inte",
+        "Implies": "Medför",
+        "If and only if": "Om och endast om",
+        "Closed interval": "Slutet intervall",
+        "Open interval": "Öppet intervall",
+        "Half-open interval": "Halvöppet intervall",
+        "Function mapping": "Funktionsavbildning",
+        "Sequence": "Talföljd",
+        "Infinite series": "Oändlig serie",
+        "Left-hand limit": "Vänstergränsvärde",
+        "Right-hand limit": "Högergränsvärde",
+        "Continuity at a point": "Kontinuitet i en punkt",
+        "Supremum": "Supremum",
+        "Infimum": "Infimum",
+        "Norm": "Norm",
+        "Evaluation bar": "Insättningsnotation",
+        "Epsilon-delta statement": "Epsilon-delta-villkor",
+        "Taylor polynomial": "Taylorpolynom",
+        "Sine": "Sinus",
+        "Cosine": "Cosinus",
+        "Tangent": "Tangens",
+        "Natural logarithm": "Naturlig logaritm",
+        "Exponential function": "Exponentialfunktion",
+        "Function composition": "Funktionssammansättning",
+        "Indefinite integral": "Obestämd integral",
+        "Second derivative": "Andraderivata",
+        "Maximum": "Maximum",
+        "Minimum": "Minimum",
+        "Greek alpha": "Grekiska alfa",
+        "Greek beta": "Grekiska beta",
+        "Greek theta": "Grekiska theta",
+        "Greek pi": "Grekiska pi",
+        "Greek sigma": "Grekiska sigma"
+    })
+
+    function commandDisplayName(englishName) {
+        var swedishName = latexCommandSwedishNames[englishName] || ""
+        return swedishName.length && swedishName !== englishName
+                ? swedishName + " · " + englishName : englishName
+    }
 
     function luminance(color) {
         return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b
@@ -1079,7 +1170,9 @@ ApplicationWindow {
         for (var i = 0; i < latexCommands.length; ++i) {
             var command = latexCommands[i]
             var name = command.name.toLowerCase()
-            var haystack = name + " " + command.keywords + " " + command.example.toLowerCase()
+            var swedishName = (latexCommandSwedishNames[command.name] || "").toLowerCase()
+            var haystack = name + " " + swedishName + " " + command.keywords
+                    + " " + command.example.toLowerCase()
             var score = 1
             if (q.length) {
                 var terms = q.split(/\s+/)
@@ -1094,9 +1187,9 @@ ApplicationWindow {
                     score += 20
                 }
                 if (!found) continue
-                if (name === q) score += 100
-                else if (name.indexOf(q) === 0) score += 60
-                else if (name.indexOf(q) >= 0) score += 30
+                if (name === q || swedishName === q) score += 100
+                else if (name.indexOf(q) === 0 || swedishName.indexOf(q) === 0) score += 60
+                else if (name.indexOf(q) >= 0 || swedishName.indexOf(q) >= 0) score += 30
             }
             matches.push({ score: score, order: i, command: command })
         }
@@ -1107,12 +1200,24 @@ ApplicationWindow {
         for (var k = 0; k < matches.length; ++k) {
             var item = matches[k].command
             commandResults.append({
-                commandName: item.name,
+                commandName: commandDisplayName(item.name),
                 insertText: item.insertText,
                 example: item.example
             })
         }
         commandList.currentIndex = commandResults.count ? 0 : -1
+    }
+
+    function firstCommandResultName() {
+        return commandResults.count ? commandResults.get(0).commandName : ""
+    }
+
+    function commandsMissingSwedishNames() {
+        var missing = []
+        for (var i = 0; i < latexCommands.length; ++i)
+            if (!(latexCommandSwedishNames[latexCommands[i].name] || "").length)
+                missing.push(latexCommands[i].name)
+        return missing
     }
 
     function openCommandFinder() {
@@ -1597,7 +1702,7 @@ ApplicationWindow {
                     anchors.leftMargin: 18
                     anchors.rightMargin: 18
                     visible: commandSearch.text.length === 0
-                    text: "Search LaTeX — try “root”"
+                    text: "Sök LaTeX / Search LaTeX — prova “delmängd”"
                     color: win.mutedColor
                     verticalAlignment: Text.AlignVCenter
                     font.family: win.editorFont
@@ -1688,6 +1793,8 @@ ApplicationWindow {
                             color: win.textColor
                             font.family: win.editorFont
                             font.pixelSize: Math.max(13, win.editorSize)
+                            width: parent.width
+                            elide: Text.ElideRight
                         }
                         Text {
                             text: commandRow.example

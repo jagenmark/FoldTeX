@@ -740,6 +740,21 @@ int main(int argc, char **argv) {
     if (!expect(commandList->property("count").toInt() >= 3,
                 QStringLiteral("Ctrl+K Analysis 1 search did not find limit entries")))
         return 1;
+    QMetaObject::invokeMethod(window, "updateCommandResults",
+                              Q_ARG(QVariant, QStringLiteral("inte delmängd")));
+    QVariant firstSwedishCommand;
+    QMetaObject::invokeMethod(window, "firstCommandResultName",
+                              Q_RETURN_ARG(QVariant, firstSwedishCommand));
+    QVariant missingSwedishCommands;
+    QMetaObject::invokeMethod(window, "commandsMissingSwedishNames",
+                              Q_RETURN_ARG(QVariant, missingSwedishCommands));
+    if (!expect(firstSwedishCommand.toString()
+                    == QStringLiteral("Inte delmängd · Not a subset"),
+                QStringLiteral("Ctrl+K did not show the Swedish command name first: '%1'")
+                    .arg(firstSwedishCommand.toString()))
+        || !expect(missingSwedishCommands.toList().isEmpty(),
+                   QStringLiteral("Some Ctrl+K commands lack Swedish names")))
+        return 1;
     QMetaObject::invokeMethod(window, "clearSnippetStops");
     editor->setProperty("text", QString());
     editor->setProperty("cursorPosition", 0);

@@ -16,7 +16,8 @@ they have not been tested.
 - Find and replace text in both prose and the source behind rendered math.
 - Search common LaTeX by English or Swedish words. `Ctrl+K` includes set theory
   and Analysis 1 notation for number sets, intervals, logic, sequences, limits,
-  continuity, derivatives, integrals, sup/inf, and Taylor polynomials.
+  continuity, derivatives, integrals, sup/inf, and Taylor polynomials. Results
+  show the Swedish name first and retain the English name beside it.
 - Type a short name and press Tab. Along with the core math snippets, FoldTeX
   supports `set`, `union`, `inter`, `abs`, `norm`, `seq`, `series`, `deriv`,
   `eval`, `cint`, `oint`, `epsdel`, `taylor`, and `nn`/`zz`/`qq`/`rr`/`cc`.

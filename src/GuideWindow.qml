@@ -45,9 +45,9 @@ Window {
         },
         {
             title: "Find text or LaTeX",
-            body: "Ctrl+F finds and replaces words in both prose and the source behind rendered math. Ctrl+K searches common LaTeX by plain names such as root, fraction, or integral.",
-            code: "Ctrl+F   find in this note\nCtrl+K   find LaTeX syntax",
-            keywords: "find search replace latex command syntax ctrl f k"
+            body: "Ctrl+F finds and replaces words in both prose and the source behind rendered math. Ctrl+K searches common LaTeX by Swedish or English names such as delmängd/subset, gränsvärde/limit, or integral. Results show the Swedish name first and the English name after it.",
+            code: "Ctrl+F   find in this note\nCtrl+K   find LaTeX syntax\nTry: delmängd, gränsvärde, derivata",
+            keywords: "find search replace latex command syntax Swedish English svenska engelska sök ctrl f k"
         },
         {
             title: "Select and edit rows",
