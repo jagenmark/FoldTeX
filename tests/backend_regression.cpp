@@ -42,6 +42,21 @@ int main(int argc, char **argv) {
         qCritical() << "FAIL: formula still errors" << render;
         return 1;
     }
+    const QString analysisSource = QStringLiteral(
+        R"(\begin{gathered}
+x \in A,\; y \notin A,\; A \subseteq B,\; A \nsubseteq C \\
+A \supseteq B,\; A \nsupseteq C,\; A \cup B,\; A \cap B,\; A \setminus B \\
+A^{\complement},\; A \triangle B,\; \emptyset,\; \mathbb{N},\mathbb{Z},\mathbb{Q},\mathbb{R},\mathbb{C} \\
+\left\{x \in \mathbb{R} \middle\vert x>0\right\},\; \left\lvert x-a \right\rvert \\
+\forall \varepsilon>0\;\exists \delta>0 \colon |x-a|<\delta \implies |f(x)-f(a)|<\varepsilon \\
+\left\lVert x \right\rVert,\; \sup A,\; \inf A,\;
+\sum_{k=0}^{n}\frac{f^{(k)}(a)}{k!}(x-a)^k
+\end{gathered})");
+    const QVariantMap analysisRender = backend.render(analysisSource, QStringLiteral("#ffffff"), 18);
+    if (!analysisRender.value(QStringLiteral("error")).toString().isEmpty()) {
+        qCritical() << "FAIL: Analysis 1 notation does not render" << analysisRender;
+        return 1;
+    }
     const QString badSource = QStringLiteral("\\foldtexRegressionMissingCommand{x}");
     const QString color = QStringLiteral("#ffffff");
     const int size = 18;

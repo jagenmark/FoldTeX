@@ -14,8 +14,12 @@ they have not been tested.
 - Save and open `.foldtex` notes; export them as `.tex` or `.pdf`.
 - Switch between automatic, all-source, and all-rendered views.
 - Find and replace text in both prose and the source behind rendered math.
-- Search common LaTeX by plain words, use the offline guide, or type `sqrt`,
-  `root`, `frac`, `sum`, `prod`, `int`, `lim`, `cases`, or `mat2` and press Tab.
+- Search common LaTeX by English or Swedish words. `Ctrl+K` includes set theory
+  and Analysis 1 notation for number sets, intervals, logic, sequences, limits,
+  continuity, derivatives, integrals, sup/inf, and Taylor polynomials.
+- Type a short name and press Tab. Along with the core math snippets, FoldTeX
+  supports `set`, `union`, `inter`, `abs`, `norm`, `seq`, `series`, `deriv`,
+  `eval`, `cint`, `oint`, `epsdel`, `taylor`, and `nn`/`zz`/`qq`/`rr`/`cc`.
 - Mark rows as definitions, theorems, proofs, or examples, and add timed
   catch-up marks.
 - Start a note with its title, course, lecture, and date from the `Ctrl+N`

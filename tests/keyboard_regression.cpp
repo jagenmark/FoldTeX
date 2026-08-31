@@ -711,6 +711,40 @@ int main(int argc, char **argv) {
                            == QStringLiteral("Start typing…"),
                 QStringLiteral("A new blank note did not show and focus its typing row")))
         return 1;
+
+    editor->setProperty("text", QStringLiteral("set"));
+    editor->setProperty("cursorPosition", 3);
+    QVariant expandedSet;
+    QMetaObject::invokeMethod(window, "handleSnippetTab", Q_RETURN_ARG(QVariant, expandedSet),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    QTest::qWait(50);
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(expandedSet.toBool()
+                    && newLines.toList().first().toMap().value(QStringLiteral("source"))
+                           .toString()
+                           == QStringLiteral("\\left\\{ x \\middle| condition \\right\\}")
+                    && editor->property("selectedText").toString() == QStringLiteral("x"),
+                QStringLiteral("Set-builder Tab snippet or its first stop failed")))
+        return 1;
+
+    QObject *commandList = window->findChild<QObject *>(QStringLiteral("commandList"));
+    QMetaObject::invokeMethod(window, "updateCommandResults",
+                              Q_ARG(QVariant, QStringLiteral("mängd")));
+    if (!expect(commandList && commandList->property("count").toInt() >= 8,
+                QStringLiteral("Ctrl+K set-theory search did not find the Swedish set entries")))
+        return 1;
+    QMetaObject::invokeMethod(window, "updateCommandResults",
+                              Q_ARG(QVariant, QStringLiteral("gränsvärde")));
+    if (!expect(commandList->property("count").toInt() >= 3,
+                QStringLiteral("Ctrl+K Analysis 1 search did not find limit entries")))
+        return 1;
+    QMetaObject::invokeMethod(window, "clearSnippetStops");
+    editor->setProperty("text", QString());
+    editor->setProperty("cursorPosition", 0);
+    QTest::qWait(50);
+
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       QPoint(window->width() / 2, window->height() - 50));
     QTest::qWait(100);

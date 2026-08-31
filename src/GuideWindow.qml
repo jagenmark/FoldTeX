@@ -39,9 +39,9 @@ Window {
         },
         {
             title: "Fast LaTeX snippets",
-            body: "Type a short name and press Tab. FoldTeX expands sqrt, root, frac, sum, prod, int, lim, cases, and mat2. Tab moves to the next part you need to replace; Shift+Tab moves back one part.",
-            code: "frac  then Tab\nTab   next field\nShift+Tab   prior field",
-            keywords: "snippet tab fast template placeholder sqrt root frac sum product integral limit cases matrix"
+            body: "Type a short name and press Tab. Core snippets include sqrt, root, frac, sum, prod, int, lim, cases, and mat2. Analysis snippets include set, union, inter, abs, norm, seq, series, deriv, eval, cint, oint, epsdel, and taylor. Type nn, zz, qq, rr, or cc for a number set. Tab and Shift+Tab move between fields.",
+            code: "set  then Tab\nrr   then Tab\nderiv   then Tab\nTab / Shift+Tab   next / prior field",
+            keywords: "snippet tab fast template placeholder sqrt root frac sum product integral limit cases matrix set union intersection absolute norm sequence series derivative interval epsilon delta taylor number sets"
         },
         {
             title: "Find text or LaTeX",
@@ -185,7 +185,25 @@ Window {
             title: "Limits and derivatives",
             body: "Put the value being approached below lim. Fractions are the usual way to write ordinary, higher-order, and partial derivatives.",
             code: "\\lim_{x \\to 0} \\frac{\\sin x}{x}\n\\frac{dy}{dx}\n\\frac{d^2y}{dx^2}\n\\frac{\\partial f}{\\partial x}",
-            keywords: "limit derivative differential partial calculus approaches"
+            keywords: "limit derivative differential partial calculus approaches gränsvärde derivata derivera"
+        },
+        {
+            title: "Functions, domains, and composition",
+            body: "Colon, to, and a pair of sets state a function's domain and codomain. Circ composes two functions. Use a vertical bar after a function when you need to show a restricted domain.",
+            code: "f \\colon A \\to B\n(f \\circ g)(x) = f(g(x))\nf|_A",
+            keywords: "function domain codomain range mapping composition restriction funktion definitionsmängd målmängd värdemängd sammansättning"
+        },
+        {
+            title: "Antiderivatives and the integral result",
+            body: "An integral without bounds is an antiderivative plus a constant. For a definite integral, square brackets with lower and upper indices show where to evaluate the antiderivative.",
+            code: "\\int f(x)\\,dx = F(x) + C\n\\int_a^b f(x)\\,dx = \\left[F(x)\\right]_a^b = F(b)-F(a)",
+            keywords: "integral antiderivative primitive definite bounds evaluate fundamental theorem primitiv funktion bestämd obestämd insättning"
+        },
+        {
+            title: "Taylor polynomials",
+            body: "The kth derivative at a supplies the coefficient of the kth power. The factorial belongs in the denominator.",
+            code: "T_n(x)=\\sum_{k=0}^{n} \\frac{f^{(k)}(a)}{k!}(x-a)^k",
+            keywords: "taylor maclaurin polynomial expansion derivative factorial approximation taylorpolynom utveckling approximation"
         },
         {
             title: "Vectors and accents",
@@ -195,9 +213,27 @@ Window {
         },
         {
             title: "Sets and logic",
-            body: "These commands cover membership, subsets, unions, intersections, number sets, and common logic signs.",
-            code: "x \\in A\nA \\subseteq B\nA \\cup B\nA \\cap B\n\\mathbb{R}\nP \\land Q\nP \\lor Q\n\\forall x \\in A",
-            keywords: "set membership subset union intersection real numbers logic and or forall"
+            body: "Use in and notin for membership. Subseteq and nsubseteq mean subset and not a subset; supseteq and nsupseteq give the matching superset forms. Subset and subsetneq are common strict forms. Cup is union, cap is intersection, setminus is difference, complement marks everything outside a set, and triangle is symmetric difference. Vertical bars give cardinality, times gives a Cartesian product, and bigcup or bigcap joins an indexed family. Emptyset is the empty set. Mathbb gives the standard number sets. Forall and exists write quantified claims; implies and iff connect them.",
+            code: "x \\in A, \\quad y \\notin A\nA \\subseteq B, \\quad A \\nsubseteq B\nA \\subsetneq B, \\quad A \\supseteq B, \\quad A \\nsupseteq B\nA \\cup B, \\quad A \\cap B\nA \\setminus B, \\quad A^{\\complement}, \\quad A \\triangle B\n\\left|A\\right|, \\quad A \\times B\n\\bigcup_{i=1}^{n} A_i, \\quad \\bigcap_{i=1}^{n} A_i\n\\emptyset\n\\mathbb{N}, \\mathbb{Z}, \\mathbb{Q}, \\mathbb{R}, \\mathbb{C}\n\\forall x \\in A \\; \\exists y \\in B\nP \\implies Q, \\quad P \\iff Q",
+            keywords: "set membership subset not subset superset not superset union intersection difference complement symmetric empty natural integer rational real complex numbers logic forall exists implies iff mängd delmängd inte delmängd övermängd union snitt komplement"
+        },
+        {
+            title: "Set-builder notation and intervals",
+            body: "A vertical bar means 'such that' in set-builder notation. Parentheses exclude an endpoint and square brackets include it. Half-open intervals use one of each. Swedish books may write the open interval as ]a,b[; both forms mean the same thing.",
+            code: "\\left\\{ x \\in \\mathbb{R} \\middle| x > 0 \\right\\}\n\\left(a,b\\right)\n\\left[a,b\\right]\n\\left[a,b\\right)\n\\left(a,b\\right]",
+            keywords: "set builder such that condition interval open closed half endpoint mängd villkor intervall öppet slutet"
+        },
+        {
+            title: "Sequences, series, sup, and inf",
+            body: "A sequence uses an indexed symbol. Add a sum for a series. Sup and inf name the least upper bound and greatest lower bound when a maximum or minimum need not exist.",
+            code: "(a_n)_{n=1}^{\\infty}\n\\lim_{n \\to \\infty} a_n = L\n\\sum_{n=1}^{\\infty} a_n\n\\sup A, \\quad \\inf A",
+            keywords: "sequence series convergence limit supremum infimum upper lower bound följd serie konvergens gränsvärde"
+        },
+        {
+            title: "Continuity and epsilon-delta",
+            body: "Continuity at a means that the limit equals the function value. A minus or plus above the target gives a one-sided limit. Epsilon and delta write the precise limit condition.",
+            code: "\\lim_{x \\to a} f(x) = f(a)\n\\lim_{x \\to a^-} f(x)\n\\lim_{x \\to a^+} f(x)\n\\forall \\varepsilon > 0\\; \\exists \\delta > 0 \\colon |x-a|<\\delta \\implies |f(x)-f(a)|<\\varepsilon",
+            keywords: "continuity one sided limit epsilon delta definition continuous kontinuitet gränsvärde höger vänster"
         },
         {
             title: "Brackets and absolute values",
