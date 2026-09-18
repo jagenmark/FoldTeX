@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QFileInfo>
 #include <QFont>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -23,6 +24,10 @@ int main(int argc, char *argv[]) {
     Backend backend(&app);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+    const QString startupDocument = argc > 1
+        ? QFileInfo(QString::fromLocal8Bit(argv[1])).absoluteFilePath() : QString();
+    engine.rootContext()->setContextProperty(QStringLiteral("startupDocument"),
+                                             startupDocument);
     engine.load(QUrl(QStringLiteral("qrc:/Main.qml")));
     if (engine.rootObjects().isEmpty())
         return 1;

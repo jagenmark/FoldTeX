@@ -1,17 +1,11 @@
 QT += core gui widgets qml quick quickcontrols2 quickdialogs2 testlib
-
 CONFIG += c++17 console
 CONFIG -= app_bundle
-TARGET = keyboard_regression
+TARGET = spelling_regression
 TEMPLATE = app
-
 INCLUDEPATH += ../src
-HEADERS += ../src/backend.h ../src/snippetstore.h
-SOURCES += keyboard_regression.cpp ../src/backend.cpp ../src/snippetstore.cpp
-
-QT += quick qml
-HEADERS += ../src/documenteditor.h ../src/latexsyntax.h
-SOURCES += ../src/documenteditor.cpp ../src/latexsyntax.cpp
+HEADERS += ../src/backend.h ../src/snippetstore.h ../src/documenteditor.h ../src/latexsyntax.h
+SOURCES += spelling_regression.cpp ../src/backend.cpp ../src/snippetstore.cpp ../src/documenteditor.cpp ../src/latexsyntax.cpp
 
 QT += svg
 

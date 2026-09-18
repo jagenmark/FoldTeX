@@ -1,6 +1,7 @@
 #include "backend.h"
 
 #include <QApplication>
+#include <QDate>
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
@@ -11,6 +12,7 @@
 #include <QQuickItem>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTest>
 #include <QTemporaryDir>
@@ -32,6 +34,8 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("foldtex-keyboard-test"));
     app.setOrganizationName(QStringLiteral("JagenmarkTests"));
+    QSettings().remove(QStringLiteral("library"));
+    QSettings().remove(QStringLiteral("snippets/custom"));
     QQuickStyle::setStyle(QStringLiteral("Material"));
     if (argc != 2)
         return 2;
@@ -78,11 +82,16 @@ int main(int argc, char **argv) {
     QObject *saveLabel = window->findChild<QObject *>(QStringLiteral("saveLabel"));
     QObject *guideHeaderButton = window->findChild<QObject *>(QStringLiteral("guideHeaderButton"));
     QObject *edgeMenuPanel = window->findChild<QObject *>(QStringLiteral("edgeMenuPanel"));
+    QObject *noteLibraryPopup = window->findChild<QObject *>(QStringLiteral("noteLibraryPopup"));
+    QObject *noteLibrarySearch = window->findChild<QObject *>(QStringLiteral("noteLibrarySearch"));
+    QObject *noteLibrarySort = window->findChild<QObject *>(QStringLiteral("noteLibrarySort"));
+    QObject *noteLibraryList = window->findChild<QObject *>(QStringLiteral("noteLibraryList"));
     const QStringList edgeButtonNames{
         QStringLiteral("settingsEdgeButton"), QStringLiteral("helpEdgeButton"),
         QStringLiteral("syntaxEdgeButton"), QStringLiteral("viewEdgeButton"),
         QStringLiteral("exportEdgeButton"), QStringLiteral("guideHeaderButton"),
-        QStringLiteral("figureEdgeButton"), QStringLiteral("slidesEdgeButton")
+        QStringLiteral("figureEdgeButton"), QStringLiteral("slidesEdgeButton"),
+        QStringLiteral("libraryEdgeButton")
     };
     QList<QObject *> edgeButtons;
     for (const QString &name : edgeButtonNames)
@@ -90,10 +99,47 @@ int main(int argc, char **argv) {
     if (!expect(window && dialog && font && size && margin && fontFrame && sizeFrame
                     && marginFrame && cancel && ok && guide && titleField && titleDisplay
                     && titleSlot && saveLabel && guideHeaderButton && edgeMenuPanel
+                    && noteLibraryPopup && noteLibrarySearch && noteLibrarySort
+                    && noteLibraryList
                     && std::all_of(edgeButtons.cbegin(), edgeButtons.cend(),
                                    [](QObject *button) { return button; }),
                 QStringLiteral("Aa controls were not found")))
         return 1;
+    QTest::qWait(500);
+    QVariant rowMenuValue;
+    QMetaObject::invokeMethod(window, "rowContextMenu",
+                              Q_RETURN_ARG(QVariant, rowMenuValue),
+                              Q_ARG(QVariant, 0));
+    QObject *rowMenu = rowMenuValue.value<QObject *>();
+    QObject *editFigureCaptionMenuItem = rowMenu ? rowMenu->findChild<QObject *>(
+        QStringLiteral("editFigureCaptionMenuItem")) : nullptr;
+    QObject *replaceFigureMenuItem = rowMenu ? rowMenu->findChild<QObject *>(
+        QStringLiteral("replaceFigureMenuItem")) : nullptr;
+    QObject *figureMenuSeparator = rowMenu ? rowMenu->findChild<QObject *>(
+        QStringLiteral("figureMenuSeparator")) : nullptr;
+    if (!expect(rowMenu && editFigureCaptionMenuItem && replaceFigureMenuItem
+                    && figureMenuSeparator,
+                QStringLiteral("Row menu controls were not found")))
+        return 1;
+    QMetaObject::invokeMethod(rowMenu, "open");
+    QTest::qWait(100);
+    if (!expect(!editFigureCaptionMenuItem->property("visible").toBool()
+                    && editFigureCaptionMenuItem->property("height").toReal() == 0
+                    && !replaceFigureMenuItem->property("visible").toBool()
+                    && replaceFigureMenuItem->property("height").toReal() == 0
+                    && !figureMenuSeparator->property("visible").toBool()
+                    && figureMenuSeparator->property("height").toReal() == 0,
+                QStringLiteral("Hidden figure actions leave blank rows in a text-row menu: "
+                               "caption %1/%2, replace %3/%4, separator %5/%6")
+                    .arg(editFigureCaptionMenuItem->property("visible").toBool())
+                    .arg(editFigureCaptionMenuItem->property("height").toReal())
+                    .arg(replaceFigureMenuItem->property("visible").toBool())
+                    .arg(replaceFigureMenuItem->property("height").toReal())
+                    .arg(figureMenuSeparator->property("visible").toBool())
+                    .arg(figureMenuSeparator->property("height").toReal())))
+        return 1;
+    QMetaObject::invokeMethod(rowMenu, "close");
+    QTest::qWait(50);
     if (!expect(titleDisplay->property("elide").toInt() == Qt::ElideRight,
                 QStringLiteral("Idle title does not elide its end")))
         return 1;
@@ -164,10 +210,29 @@ int main(int argc, char **argv) {
                     && guideTitles.contains(QStringLiteral("Fast LaTeX snippets"))
                     && guideTitles.contains(QStringLiteral("Save, open, and recover"))
                     && guideTitles.contains(QStringLiteral("Definitions, theorems, and proofs"))
-                    && guideTitles.contains(QStringLiteral("Courses and lecture details"))
+                    && guideTitles.contains(QStringLiteral("Lecture and problem-solving notes"))
                     && guideTitles.contains(QStringLiteral("Figures"))
                     && guideTitles.contains(QStringLiteral("Lecture slides")),
                 QStringLiteral("Guide is missing current FoldTeX features")))
+        return 1;
+    QVariant fullSnippetSectionValue;
+    QMetaObject::invokeMethod(guide, "snippetListSection",
+                              Q_RETURN_ARG(QVariant, fullSnippetSectionValue));
+    const QVariantMap fullSnippetSection = fullSnippetSectionValue.toMap();
+    const QVariantList builtInSnippetRows = fullSnippetSection
+                                                .value(QStringLiteral("builtIns")).toList();
+    bool foundTextSnippet = false;
+    for (const QVariant &rowValue : builtInSnippetRows) {
+        const QVariantMap row = rowValue.toMap();
+        if (row.value(QStringLiteral("trigger")).toString() == QStringLiteral("text")
+            && row.value(QStringLiteral("template")).toString()
+                   == QStringLiteral("\\text{«text»}")) {
+            foundTextSnippet = true;
+            break;
+        }
+    }
+    if (!expect(foundTextSnippet,
+                QStringLiteral("Full snippet guide does not pair triggers with expansions")))
         return 1;
     guide->setWidth(578);
     guide->setProperty("preferredSideMargin", 100);
@@ -183,6 +248,20 @@ int main(int argc, char **argv) {
         || !expect(guidePage->property("width").toReal()
                        <= guideScroll->property("availableWidth").toReal(),
                    QStringLiteral("Guide page extends beyond the scroll view")))
+        return 1;
+    QVariant narrowTriggerWidth;
+    QVariant wideTriggerWidth;
+    QMetaObject::invokeMethod(guide, "snippetTriggerColumnWidth",
+                              Q_RETURN_ARG(QVariant, narrowTriggerWidth),
+                              Q_ARG(QVariant, 280));
+    QMetaObject::invokeMethod(guide, "snippetTriggerColumnWidth",
+                              Q_RETURN_ARG(QVariant, wideTriggerWidth),
+                              Q_ARG(QVariant, 700));
+    if (!expect(narrowTriggerWidth.toReal() > 0
+                    && narrowTriggerWidth.toReal() < 280 * 0.5
+                    && wideTriggerWidth.toReal() > narrowTriggerWidth.toReal()
+                    && wideTriggerWidth.toReal() < 700 * 0.5,
+                QStringLiteral("Full snippet rows do not adapt to the guide width")))
         return 1;
     QObject *guideFlick = guideScroll->property("contentItem").value<QObject *>();
     QObject *guideSearch = guide->findChild<QObject *>(QStringLiteral("guideSearch"));
@@ -427,8 +506,12 @@ int main(int argc, char **argv) {
     if (!expect(linkedLines.toList().first().toMap().value(QStringLiteral("slide")).toInt() == 0,
                 QStringLiteral("Active row did not link to the current slide")))
         return 1;
-    QMetaObject::invokeMethod(figurePopup, "open");
+    window->setProperty("documentPath", QString());
+    QMetaObject::invokeMethod(window, "openFigureEditor");
     QTest::qWait(400);
+    if (!expect(figurePopup->property("visible").toBool(),
+                QStringLiteral("An unsaved note could not open the figure editor")))
+        return 1;
     figurePopup->setProperty("tool", QStringLiteral("arrow"));
     QMetaObject::invokeMethod(figurePopup, "beginAction", Q_ARG(QVariant, 30), Q_ARG(QVariant, 30));
     QMetaObject::invokeMethod(figurePopup, "finishAction", Q_ARG(QVariant, 120), Q_ARG(QVariant, 90));
@@ -444,6 +527,27 @@ int main(int argc, char **argv) {
     QMetaObject::invokeMethod(figurePopup, "finishAction", Q_ARG(QVariant, 120), Q_ARG(QVariant, 90));
     QMetaObject::invokeMethod(figurePopup, "saveFigure");
     QTest::qWait(1000);
+    QVariant temporaryFigureLines;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, temporaryFigureLines));
+    const QVariantList temporarySavedFigureLines = temporaryFigureLines.toList();
+    const QString temporaryFigurePath = temporarySavedFigureLines.size() > 1
+        ? temporarySavedFigureLines.at(1).toMap().value(QStringLiteral("asset")).toString()
+        : QString();
+    if (!expect(temporarySavedFigureLines.size() > 2
+                    && !temporaryFigurePath.isEmpty() && QFile::exists(temporaryFigurePath)
+                    && temporarySavedFigureLines.at(2).toMap()
+                           .value(QStringLiteral("kind")).toString() == QStringLiteral("normal")
+                    && temporarySavedFigureLines.at(2).toMap()
+                           .value(QStringLiteral("source")).toString().isEmpty()
+                    && window->property("activeIndex").toInt() == 2
+                    && window->property("saveStatus").toString()
+                           == QStringLiteral("Recovery saved"),
+                QStringLiteral("Figure insertion did not focus a writable row below it")))
+        return 1;
+    const QString savedFigureDocument = slideCourse.path() + QStringLiteral("/notes.foldtex");
+    QMetaObject::invokeMethod(window, "saveTo", Q_ARG(QVariant, savedFigureDocument));
+    QTest::qWait(100);
     QVariant figureLines;
     QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, figureLines));
     const QVariantList savedFigureLines = figureLines.toList();
@@ -462,6 +566,42 @@ int main(int argc, char **argv) {
                      qPrintable(figurePopup->property("documentPath").toString()));
         return 1;
     }
+    if (!expect(figurePath != temporaryFigurePath
+                    && figurePath.contains(QStringLiteral("notes.assets/"))
+                    && !QFile::exists(temporaryFigurePath)
+                    && window->property("saveStatus").toString() == QStringLiteral("Saved"),
+                QStringLiteral("First save did not move the temporary figure into note assets "
+                               "(old=%1, new=%2, oldExists=%3, status=%4)")
+                    .arg(temporaryFigurePath, figurePath)
+                    .arg(QFile::exists(temporaryFigurePath))
+                    .arg(window->property("saveStatus").toString())))
+        return 1;
+    const QString olderNote = slideCourse.path() + QStringLiteral("/older.foldtex");
+    backend.saveDocumentData(olderNote, {
+        {QStringLiteral("title"), QStringLiteral("Older note")},
+        {QStringLiteral("course"), QStringLiteral("Calculus I")},
+        {QStringLiteral("lectureDate"), QStringLiteral("2026-08-01")},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("archived marker")}}
+        }}
+    });
+    backend.rememberNoteFolder(olderNote);
+    QTest::keyClick(window, Qt::Key_O, Qt::ControlModifier);
+    QTest::qWait(300);
+    if (!expect(noteLibraryPopup->property("visible").toBool()
+                    && noteLibraryList->property("count").toInt() >= 2,
+                QStringLiteral("Ctrl+O did not open a populated notes library (visible=%1, count=%2)")
+                    .arg(noteLibraryPopup->property("visible").toBool())
+                    .arg(noteLibraryList->property("count").toInt())))
+        return 1;
+    noteLibrarySearch->setProperty("text", QStringLiteral("archived marker"));
+    noteLibrarySort->setProperty("currentIndex", 2);
+    QMetaObject::invokeMethod(window, "refreshNoteLibrary");
+    QTest::qWait(50);
+    if (!expect(noteLibraryList->property("count").toInt() == 1,
+                QStringLiteral("Notes library did not search saved note content")))
+        return 1;
+    QMetaObject::invokeMethod(noteLibraryPopup, "close");
     window->setWidth(980);
 
     QMetaObject::invokeMethod(dialog, "open");
@@ -661,11 +801,18 @@ int main(int argc, char **argv) {
     QTest::keyClick(window, Qt::Key_N, Qt::ControlModifier);
     QTest::qWait(100);
     QObject *newNoteDialog = window->findChild<QObject *>(QStringLiteral("newDocumentSetupDialog"));
+    QObject *newDocumentScroll = window->findChild<QObject *>(QStringLiteral("newDocumentScroll"));
     QObject *newTitleField = window->findChild<QObject *>(QStringLiteral("newTitleField"));
     QObject *newCourseField = window->findChild<QObject *>(QStringLiteral("newCourseField"));
     QObject *newLectureField = window->findChild<QObject *>(QStringLiteral("newLectureField"));
+    QObject *newProblemSetField = window->findChild<QObject *>(QStringLiteral("newProblemSetField"));
+    QObject *newLectureKindButton = window->findChild<QObject *>(
+        QStringLiteral("newLectureKindButton"));
+    QObject *newProblemSolvingKindButton = window->findChild<QObject *>(
+        QStringLiteral("newProblemSolvingKindButton"));
     QObject *newLectureDateField = window->findChild<QObject *>(QStringLiteral("newLectureDateField"));
-    if (!expect(newNoteDialog && newNoteDialog->property("visible").toBool(),
+    if (!expect(newNoteDialog && newDocumentScroll
+                    && newNoteDialog->property("visible").toBool(),
                 QStringLiteral("Ctrl+N did not open the new-note details form"))
         || !expect(newCourseField
                        && newCourseField->property("text").toString()
@@ -676,11 +823,34 @@ int main(int argc, char **argv) {
                             newCourseField
                                 ? newCourseField->property("text").toString()
                                 : QStringLiteral("missing")))
-        || !expect(newTitleField && newLectureField && newLectureDateField,
-                   QStringLiteral("New-note detail fields were not available")))
+        || !expect(newTitleField && newLectureField && newProblemSetField
+                       && newLectureKindButton && newProblemSolvingKindButton
+                       && newLectureDateField,
+                   QStringLiteral("New-note detail fields were not available"))
+        || !expect(newLectureKindButton->property("checked").toBool()
+                       && newLectureField->property("visible").toBool()
+                       && !newProblemSetField->property("visible").toBool(),
+                   QStringLiteral("Ctrl+N did not default to the lecture form"))
+        || !expect(newLectureDateField->property("text").toString()
+                       == QDate::currentDate().toString(Qt::ISODate),
+                   QStringLiteral("Ctrl+N did not fill in today's date")))
         return 1;
-    newTitleField->setProperty("text", QStringLiteral("Lecture 5 notes"));
-    newLectureField->setProperty("text", QStringLiteral("Derivatives"));
+    window->setHeight(420);
+    QTest::qWait(50);
+    if (!expect(newNoteDialog->property("height").toReal() <= 390
+                    && newDocumentScroll->property("height").toReal() > 0,
+                QStringLiteral("New-note form does not fit and scroll in a short window")))
+        return 1;
+    window->setHeight(760);
+    QTest::qWait(50);
+    QMetaObject::invokeMethod(newProblemSolvingKindButton, "click");
+    QTest::qWait(50);
+    if (!expect(newProblemSolvingKindButton->property("checked").toBool()
+                    && !newLectureField->property("visible").toBool()
+                    && newProblemSetField->property("visible").toBool(),
+                QStringLiteral("Problem-solving choice did not switch the Ctrl+N form")))
+        return 1;
+    newProblemSetField->setProperty("text", QStringLiteral("Problem set 5 — derivatives"));
     newLectureDateField->setProperty("text", QStringLiteral("2026-08-30"));
     QTest::keyClick(window, Qt::Key_Return);
     QTest::qWait(100);
@@ -688,15 +858,18 @@ int main(int argc, char **argv) {
     QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
     const QVariantList blankLines = newLines.toList();
     if (!expect(window->property("documentTitle").toString()
-                    == QStringLiteral("Lecture 5 notes")
+                    == QStringLiteral("Problem set 5 — derivatives")
                     && window->property("documentPath").toString().isEmpty(),
                 QStringLiteral("New-note form did not set the document identity"))
         || !expect(window->property("courseName").toString() == QStringLiteral("Calculus I")
-                       && window->property("lectureName").toString()
-                              == QStringLiteral("Derivatives")
+                       && window->property("noteKind").toString()
+                              == QStringLiteral("problem-solving")
+                       && window->property("lectureName").toString().isEmpty()
+                       && window->property("problemSetName").toString()
+                              == QStringLiteral("Problem set 5 — derivatives")
                        && window->property("lectureDate").toString()
                               == QStringLiteral("2026-08-30"),
-                   QStringLiteral("New-note form did not apply lecture details"))
+                   QStringLiteral("New-note form did not apply problem-solving details"))
         || !expect(blankLines.size() == 1
                        && blankLines.first().toMap().value(QStringLiteral("source"))
                               .toString().isEmpty(),
@@ -729,6 +902,101 @@ int main(int argc, char **argv) {
                 QStringLiteral("Set-builder Tab snippet or its first stop failed")))
         return 1;
 
+    QMetaObject::invokeMethod(window, "clearSnippetStops");
+    editor->setProperty("text", QStringLiteral("text"));
+    editor->setProperty("cursorPosition", 4);
+    QVariant expandedText;
+    QMetaObject::invokeMethod(window, "handleSnippetTab", Q_RETURN_ARG(QVariant, expandedText),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    QTest::qWait(50);
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(expandedText.toBool()
+                    && newLines.toList().first().toMap().value(QStringLiteral("source"))
+                           .toString() == QStringLiteral("\\text{text}")
+                    && editor->property("selectedText").toString() == QStringLiteral("text"),
+                QStringLiteral("Text Tab snippet or its first stop failed")))
+        return 1;
+
+    const QVariantMap customSnippetSave = backend.replaceCustomSnippets({
+        QVariantMap{{QStringLiteral("name"), QStringLiteral("Box value")},
+                    {QStringLiteral("trigger"), QStringLiteral("boxvalue")},
+                    {QStringLiteral("aliases"), QStringList{QStringLiteral("bv")}},
+                    {QStringLiteral("template"), QStringLiteral("\\boxed{«x»}")},
+                    {QStringLiteral("allCourses"), true},
+                    {QStringLiteral("enabled"), true}}
+    });
+    QMetaObject::invokeMethod(window, "clearSnippetStops");
+    editor->setProperty("text", QStringLiteral("bv"));
+    editor->setProperty("cursorPosition", 2);
+    QVariant expandedCustom;
+    QMetaObject::invokeMethod(window, "handleSnippetTab",
+                              Q_RETURN_ARG(QVariant, expandedCustom),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    QTest::qWait(50);
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(customSnippetSave.value(QStringLiteral("saved")).toBool()
+                    && expandedCustom.toBool()
+                    && newLines.toList().first().toMap().value(QStringLiteral("source"))
+                           .toString() == QStringLiteral("\\boxed{x}")
+                    && editor->property("selectedText").toString() == QStringLiteral("x"),
+                QStringLiteral("Global custom alias did not expand with its Tab stop")))
+        return 1;
+
+    QObject *snippetManager = window->findChild<QObject *>(QStringLiteral("snippetManager"));
+    QObject *allCoursesSwitch = window->findChild<QObject *>(
+        QStringLiteral("snippetAllCoursesSwitch"));
+    QObject *snippetTriggerField = window->findChild<QObject *>(
+        QStringLiteral("snippetTriggerField"));
+    QObject *snippetAliasesField = window->findChild<QObject *>(
+        QStringLiteral("snippetAliasesField"));
+    QObject *snippetTemplateField = window->findChild<QObject *>(
+        QStringLiteral("snippetTemplateField"));
+    if (!expect(snippetManager && allCoursesSwitch && snippetTriggerField
+                    && snippetAliasesField && snippetTemplateField,
+                QStringLiteral("Custom snippet manager was not available")))
+        return 1;
+    QMetaObject::invokeMethod(snippetManager, "openManager");
+    QTest::qWait(80);
+    QMetaObject::invokeMethod(snippetManager, "newSnippet");
+    if (!expect(snippetManager->property("visible").toBool()
+                    && allCoursesSwitch->property("checked").toBool(),
+                QStringLiteral("New custom snippets were not global by default")))
+        return 1;
+    snippetTriggerField->setProperty("text", QStringLiteral("globalui"));
+    snippetAliasesField->setProperty("text", QStringLiteral("gui, guialias"));
+    snippetTemplateField->setProperty("text", QStringLiteral("\\hat{«x»}"));
+    QMetaObject::invokeMethod(snippetManager, "saveCurrent");
+    const QVariantMap uiSnippet = backend.customSnippet(QStringLiteral("guialias"),
+                                                         QStringLiteral("Other course"));
+    if (!expect(uiSnippet.value(QStringLiteral("found")).toBool()
+                    && uiSnippet.value(QStringLiteral("template")).toString()
+                           == QStringLiteral("\\hat{«x»}"),
+                QStringLiteral("Snippet manager did not save a global snippet and aliases")))
+        return 1;
+    QVariant matchingSnippetSections;
+    QMetaObject::invokeMethod(guide, "matchingSections",
+                              Q_RETURN_ARG(QVariant, matchingSnippetSections),
+                              Q_ARG(QVariant, QStringLiteral("globalui")));
+    const QVariantList snippetSections = matchingSnippetSections.toList();
+    const QVariantMap snippetList = snippetSections.value(0).toMap();
+    if (!expect(snippetSections.size() == 1
+                    && snippetList.value(QStringLiteral("title")).toString()
+                           == QStringLiteral("All Tab snippets")
+                    && snippetList.value(QStringLiteral("code")).toString()
+                           .contains(QStringLiteral("globalui Tab | \\hat{«x»}"))
+                    && snippetList.value(QStringLiteral("code")).toString()
+                           .contains(QStringLiteral("aliases: gui, guialias"))
+                    && snippetList.value(QStringLiteral("code")).toString()
+                           .contains(QStringLiteral("sqrt")),
+                QStringLiteral("Guide did not add the saved custom snippet to the full list")))
+        return 1;
+    QMetaObject::invokeMethod(snippetManager, "close");
+    backend.replaceCustomSnippets({});
+
     QObject *commandList = window->findChild<QObject *>(QStringLiteral("commandList"));
     QMetaObject::invokeMethod(window, "updateCommandResults",
                               Q_ARG(QVariant, QStringLiteral("mängd")));
@@ -754,6 +1022,42 @@ int main(int argc, char **argv) {
                     .arg(firstSwedishCommand.toString()))
         || !expect(missingSwedishCommands.toList().isEmpty(),
                    QStringLiteral("Some Ctrl+K commands lack Swedish names")))
+        return 1;
+    const QStringList courseSearchTerms{
+        QStringLiteral("rekursionsformel"), QStringLiteral("riktningsderivata"),
+        QStringLiteral("egenvärde")
+    };
+    for (const QString &term : courseSearchTerms) {
+        QMetaObject::invokeMethod(window, "updateCommandResults", Q_ARG(QVariant, term));
+        if (!expect(commandList->property("count").toInt() >= 1,
+                    QStringLiteral("Ctrl+K lacks course notation for %1").arg(term)))
+            return 1;
+    }
+
+    const QVariantMap rowModeDocument{
+        {QStringLiteral("title"), QStringLiteral("Row mode")},
+        {QStringLiteral("lines"), QVariantList{
+            QVariantMap{{QStringLiteral("source"), QStringLiteral("x + y")}}
+        }}
+    };
+    QMetaObject::invokeMethod(window, "loadData",
+                              Q_ARG(QVariant, rowModeDocument),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QMetaObject::invokeMethod(window, "setActiveRowMode",
+                              Q_ARG(QVariant, QStringLiteral("math")));
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(newLines.toList().first().toMap().value(QStringLiteral("mode")).toString()
+                    == QStringLiteral("math"),
+                QStringLiteral("Explicit math row mode was not stored")))
+        return 1;
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QTest::qWait(50);
+    editorValue.clear();
+    QMetaObject::invokeMethod(window, "activeEditorItem", Q_RETURN_ARG(QVariant, editorValue));
+    editor = editorValue.value<QObject *>();
+    if (!expect(editor, QStringLiteral("Editor was not restored after row-mode check")))
         return 1;
     QMetaObject::invokeMethod(window, "clearSnippetStops");
     editor->setProperty("text", QString());
@@ -819,6 +1123,132 @@ int main(int argc, char **argv) {
                     .arg(undoSource)))
         return 1;
 
+    const QVariantMap insertRowDocument{
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("above")}},
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("current")}},
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("below")}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData",
+                              Q_ARG(QVariant, insertRowDocument),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(1)));
+    QTest::qWait(80);
+    QVariant rowsBeforeInsert;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, rowsBeforeInsert));
+    const int rowCountBeforeInsert = rowsBeforeInsert.toList().size();
+    QTest::keyClick(window, Qt::Key_Return, Qt::ControlModifier);
+    QTest::qWait(80);
+    QVariant insertedRowLines;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, insertedRowLines));
+    const QVariantList insertedRows = insertedRowLines.toList();
+    if (!expect(insertedRows.size() == rowCountBeforeInsert + 1
+                    && insertedRows.at(0).toMap().value(QStringLiteral("source")).toString()
+                           == QStringLiteral("above")
+                    && insertedRows.at(1).toMap().value(QStringLiteral("source")).toString()
+                           == QStringLiteral("current")
+                    && insertedRows.at(2).toMap().value(QStringLiteral("source")).toString().isEmpty()
+                    && insertedRows.at(3).toMap().value(QStringLiteral("source")).toString()
+                           == QStringLiteral("below")
+                    && window->property("activeIndex").toInt() == 2,
+                QStringLiteral("Ctrl+Enter did not insert and focus an empty row below: "
+                               "count %1, active %2")
+                    .arg(insertedRows.size())
+                    .arg(window->property("activeIndex").toInt())))
+        return 1;
+
+    const QVariantMap forcedBreakDocument{
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("x + y = 10")},
+                         {QStringLiteral("mode"), QStringLiteral("math")}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData",
+                              Q_ARG(QVariant, forcedBreakDocument),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QTest::qWait(80);
+    editorValue.clear();
+    QMetaObject::invokeMethod(window, "activeEditorItem",
+                              Q_RETURN_ARG(QVariant, editorValue));
+    editor = editorValue.value<QObject *>();
+    editor->setProperty("cursorPosition", 5);
+    QMetaObject::invokeMethod(editor, "forceActiveFocus");
+    QTest::keyClick(window, Qt::Key_Return, Qt::ShiftModifier);
+    QTest::qWait(80);
+    QVariant forcedBreakLines;
+    QMetaObject::invokeMethod(window, "serializedLines",
+                              Q_RETURN_ARG(QVariant, forcedBreakLines));
+    const QVariantList forcedRows = forcedBreakLines.toList();
+    const QString forcedSource = forcedRows.first().toMap()
+        .value(QStringLiteral("source")).toString();
+    if (!expect(forcedRows.size() == 2
+                    && forcedSource.contains(QStringLiteral("\\begin{aligned}"))
+                    && forcedSource.contains(QStringLiteral("\\\\\n&"))
+                    && window->property("activeIndex").toInt() == 0,
+                QStringLiteral("Shift+Enter did not insert a forced math row break: '%1'")
+                    .arg(forcedSource)))
+        return 1;
+
+    const QVariantMap repeatedSnippetDocument{
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QString()}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData",
+                              Q_ARG(QVariant, repeatedSnippetDocument),
+                              Q_ARG(QVariant, QString()));
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, QVariant(0)));
+    QTest::qWait(80);
+    editorValue.clear();
+    QMetaObject::invokeMethod(window, "activeEditorItem",
+                              Q_RETURN_ARG(QVariant, editorValue));
+    editor = editorValue.value<QObject *>();
+    editor->setProperty("text", QStringLiteral("frac"));
+    editor->setProperty("cursorPosition", 4);
+    QMetaObject::invokeMethod(window, "handleSnippetTab",
+                              Q_RETURN_ARG(QVariant, expanded),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    for (const char character : QByteArray("long"))
+        QTest::keyClick(window, character);
+    QVariant movedToAdjustedField;
+    QMetaObject::invokeMethod(window, "handleSnippetTab",
+                              Q_RETURN_ARG(QVariant, movedToAdjustedField),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    if (!expect(movedToAdjustedField.toBool()
+                    && editor->property("selectedText").toString() == QStringLiteral("b"),
+                QStringLiteral("Editing a snippet field did not move its later Tab stops: selected '%1', stop %2, row %3")
+                    .arg(editor->property("selectedText").toString())
+                    .arg(window->property("snippetStopIndex").toInt())
+                    .arg(window->property("snippetStopRow").toInt())))
+        return 1;
+    QTest::keyClick(window, 'y');
+    QTest::keyClick(window, Qt::Key_Right);
+    QTest::qWait(10);
+    for (const char character : QByteArray(" + frac"))
+        QTest::keyClick(window, character);
+    QVariant repeatedExpansion;
+    QMetaObject::invokeMethod(window, "handleSnippetTab",
+                              Q_RETURN_ARG(QVariant, repeatedExpansion),
+                              Q_ARG(QVariant, QVariant::fromValue(editor)),
+                              Q_ARG(QVariant, 0));
+    newLines.clear();
+    QMetaObject::invokeMethod(window, "serializedLines", Q_RETURN_ARG(QVariant, newLines));
+    if (!expect(repeatedExpansion.toBool()
+                    && newLines.toList().first().toMap().value(QStringLiteral("source"))
+                           .toString() == QStringLiteral("\\frac{long}{y} + \\frac{a}{b}")
+                    && editor->property("selectedText").toString() == QStringLiteral("a"),
+                QStringLiteral("A second frac in the same row resumed old Tab fields: '%1', selected '%2', stop %3")
+                    .arg(newLines.toList().first().toMap().value(QStringLiteral("source"))
+                             .toString(), editor->property("selectedText").toString())
+                    .arg(window->property("snippetStopIndex").toInt())))
+        return 1;
+
     QObject *rowTypePopup = window->findChild<QObject *>(QStringLiteral("rowTypePopup"));
     if (!expect(rowTypePopup, QStringLiteral("Row type popup was not found")))
         return 1;
@@ -850,7 +1280,7 @@ int main(int argc, char **argv) {
     if (!expect(!rowTypePopup->property("visible").toBool()
                     && selectedTypeLines.toList().first().toMap()
                            .value(QStringLiteral("kind")).toString()
-                           == QStringLiteral("definition"),
+                           == QStringLiteral("heading"),
                 QStringLiteral("Enter did not apply and close the row type menu "
                                "(visible %1, kind %2, index %3)")
                     .arg(rowTypePopup->property("visible").toBool())
@@ -956,6 +1386,116 @@ int main(int argc, char **argv) {
                     && typedLines.at(1).toMap().value(QStringLiteral("kind"))
                            .toString() == QStringLiteral("catchup"),
                 QStringLiteral("Typed rows or catch-up marker were not stored")))
+        return 1;
+
+    const QVariantMap forcedBlockData{
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("Proof in prose")},
+                         {QStringLiteral("kind"), QStringLiteral("proof")},
+                         {QStringLiteral("label"), QStringLiteral("Proof")},
+                         {QStringLiteral("mode"), QStringLiteral("text")}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, forcedBlockData),
+                              Q_ARG(QVariant, QString()));
+    QVariant continuedLine;
+    QMetaObject::invokeMethod(window, "makeLineAfter", Q_RETURN_ARG(QVariant, continuedLine),
+                              Q_ARG(QVariant, 0));
+    if (!expect(continuedLine.toMap().value(QStringLiteral("mode")).toString()
+                    == QStringLiteral("text"),
+                QStringLiteral("A continued proof row dropped its forced text mode")))
+        return 1;
+
+    const QString undoRecoveryId = window->property("recoveryId").toString();
+    QMetaObject::invokeMethod(window, "editLine", Q_ARG(QVariant, 0));
+    QMetaObject::invokeMethod(window, "setActiveRowKind",
+                              Q_ARG(QVariant, QStringLiteral("example")));
+    QMetaObject::invokeMethod(window, "recordHistory");
+    QMetaObject::invokeMethod(window, "undoDocument");
+    QMetaObject::invokeMethod(window, "redoDocument");
+    if (!expect(!undoRecoveryId.isEmpty()
+                    && window->property("recoveryId").toString() == undoRecoveryId,
+                QStringLiteral("Undo or redo changed an unsaved note's recovery identity")))
+        return 1;
+
+    const QString imageOnlyPath = slideCourse.path() + QStringLiteral("/image-only.png");
+    QImage imageOnly(8, 8, QImage::Format_ARGB32_Premultiplied);
+    imageOnly.fill(Qt::blue);
+    imageOnly.save(imageOnlyPath);
+    const QVariantMap imageOnlyData{
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QString()},
+                         {QStringLiteral("kind"), QStringLiteral("image")},
+                         {QStringLiteral("asset"), imageOnlyPath}}
+         }}
+    };
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, imageOnlyData),
+                              Q_ARG(QVariant, QString()));
+    window->setProperty("modified", true);
+    QObject *discardDialog = window->findChild<QObject *>(QStringLiteral("newDocumentDialog"));
+    QMetaObject::invokeMethod(window, "requestNewDocument");
+    QTest::qWait(50);
+    if (!expect(discardDialog && discardDialog->property("visible").toBool(),
+                QStringLiteral("Ctrl+N did not guard an unsaved captionless image")))
+        return 1;
+    QMetaObject::invokeMethod(discardDialog, "close");
+
+    const QString conflictPath = slideCourse.path() + QStringLiteral("/conflict.foldtex");
+    const QVariantMap baseDocument{
+        {QStringLiteral("title"), QStringLiteral("Base note")},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("my lecture text")}}
+         }}
+    };
+    const QVariantMap outsideDocument{
+        {QStringLiteral("title"), QStringLiteral("Outside edit")},
+        {QStringLiteral("lines"), QVariantList{
+             QVariantMap{{QStringLiteral("source"), QStringLiteral("outside text")}}
+         }}
+    };
+    if (!backend.saveDocumentData(conflictPath, baseDocument))
+        return 1;
+    const QString baseRevision = backend.fileRevision(conflictPath);
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, baseDocument),
+                              Q_ARG(QVariant, conflictPath));
+    window->setProperty("modified", true);
+    if (!backend.saveDocumentData(conflictPath, outsideDocument))
+        return 1;
+    QVariant recoverySaved;
+    QMetaObject::invokeMethod(window, "saveRecoveryNow",
+                              Q_RETURN_ARG(QVariant, recoverySaved));
+    const QVariantMap recoveredConflict = backend.loadRecovery();
+    if (!expect(recoverySaved.toBool()
+                    && recoveredConflict.value(QStringLiteral("recoveryDirty")).toBool()
+                    && recoveredConflict.value(QStringLiteral("baseRevision")).toString()
+                           == baseRevision,
+                QStringLiteral("Conflict recovery did not keep its original file revision")))
+        return 1;
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, recoveredConflict),
+                              Q_ARG(QVariant, recoveredConflict.value(
+                                  QStringLiteral("documentPath"))));
+    QMetaObject::invokeMethod(window, "saveRecoveryNow",
+                              Q_RETURN_ARG(QVariant, recoverySaved));
+    const QVariantMap stillOutside = backend.loadDocument(conflictPath);
+    if (!expect(stillOutside.value(QStringLiteral("title")).toString()
+                    == QStringLiteral("Outside edit"),
+                QStringLiteral("Restarted conflict recovery overwrote the outside edit")))
+        return 1;
+
+    backend.saveDocumentData(conflictPath, baseDocument);
+    QMetaObject::invokeMethod(window, "loadData", Q_ARG(QVariant, baseDocument),
+                              Q_ARG(QVariant, conflictPath));
+    window->setProperty("modified", true);
+    const QVariantMap secondOutside = outsideDocument;
+    backend.saveDocumentData(conflictPath, secondOutside);
+    QVariant saveAsResult;
+    QMetaObject::invokeMethod(window, "saveTo", Q_RETURN_ARG(QVariant, saveAsResult),
+                              Q_ARG(QVariant, QUrl::fromLocalFile(conflictPath).toString()));
+    if (!expect(!saveAsResult.toBool()
+                    && backend.loadDocument(conflictPath)
+                           .value(QStringLiteral("title")).toString()
+                           == QStringLiteral("Outside edit"),
+                QStringLiteral("Save As file URL bypassed outside-change protection")))
         return 1;
 
     qInfo() << "PASS: Aa keyboard navigation and Enter apply";

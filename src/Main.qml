@@ -1,4 +1,5 @@
 import QtQuick
+import FoldTeX 1.0
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Dialogs as Dialogs
@@ -16,38 +17,42 @@ ApplicationWindow {
     title: (modified ? "* " : "") + documentTitle + " — FoldTeX"
     color: backend.themeBackground
 
-    Material.theme: luminance(backend.themeBackground) < 0.5 ? Material.Dark : Material.Light
+    Material.theme: luminance(win.color) < 0.5 ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
 
+    property bool syncingDocument: false
+    property bool editingDocument: false
     property int activeIndex: 0
     property string documentPath: ""
+    property string startupPath: typeof startupDocument === "undefined" ? "" : startupDocument
+    property string documentFileRevision: ""
+    property bool externalConflictShown: false
+    property string recoveryId: ""
     property bool modified: false
     property bool loading: false
     property string documentTitle: "Untitled notes"
     property string courseName: ""
+    property string noteKind: "lecture"
     property string lectureName: ""
+    property string problemSetName: ""
     property string lectureDate: ""
     property string sourcePdf: ""
+    property string spellLanguage: "sv"
+    property bool spellcheckEnabled: true
+    property var spellingIgnored: []
+    property string newDocumentCoursePreset: ""
+    property var noteLibraryLastNote: ({})
     property bool pdfOpen: false
     property string saveStatus: "Saved"
     property int displayMode: 0
     onDisplayModeChanged: {
         if (displayMode !== 0)
-            Qt.callLater(function() { list.forceActiveFocus() })
+            Qt.callLater(function() { documentEditor.forceActiveFocus() })
     }
     property int selectionAnchor: -1
     property int selectionEnd: -1
     property int searchLine: -1
     property int searchPosition: -1
-    property var renderQueue: []
-    property bool renderJobActive: false
-    property int renderRequestId: 0
-    property int pendingRenderRequestId: -1
-    property int pendingRenderIndex: -1
-    property string pendingRenderSource: ""
-    property string pendingRenderColor: ""
-    property int pendingRenderSize: 0
-    property int queuedVisibleCount: 0
     property var undoHistory: []
     property var redoHistory: []
     property string lastHistoryState: ""
@@ -56,7 +61,10 @@ ApplicationWindow {
     property var snippetStops: []
     property int snippetStopIndex: -1
     property int snippetStopRow: -1
-    readonly property int pendingRenderCount: renderQueue.length + (renderJobActive ? 1 : 0)
+    property int snippetExitPosition: -1
+    property string snippetTrackedText: ""
+    property bool snippetSelectionChange: false
+    readonly property int pendingRenderCount: documentEditor.pendingRenderCount
     readonly property bool hasLineSelection: selectionAnchor >= 0 && selectionEnd >= 0
     readonly property int firstSelectedLine: Math.min(selectionAnchor, selectionEnd)
     readonly property int lastSelectedLine: Math.max(selectionAnchor, selectionEnd)
@@ -69,7 +77,12 @@ ApplicationWindow {
     readonly property color mutedColor: Qt.rgba(textColor.r, textColor.g, textColor.b, 0.48)
     readonly property string editorFont: backend.editorFontFamily
     readonly property int editorSize: backend.editorFontSize
+    readonly property var builtInSnippetTriggers: Object.keys(builtInSnippetTemplates())
     readonly property var latexCommands: [
+        { name: "Bold text", insertText: "\\textbf{|}", example: "\\textbf{bold}", keywords: "bold text fetstil textbf" },
+        { name: "Italic text", insertText: "\\textit{|}", example: "\\textit{italic}", keywords: "italic text kursiv textit" },
+        { name: "Emphasized text", insertText: "\\emph{|}", example: "\\emph{emphasis}", keywords: "emphasis text betoning emph" },
+        { name: "Monospace text", insertText: "\\texttt{|}", example: "\\texttt{code}", keywords: "monospace code text kod texttt" },
         { name: "Square root", insertText: "\\sqrt{|}", example: "\\sqrt{x}", keywords: "root square radical sqrt rot kvadratrot" },
         { name: "Nth root", insertText: "\\sqrt[n]{|}", example: "\\sqrt[n]{x}", keywords: "root nth index radical rot n-te n:te" },
         { name: "Fraction", insertText: "\\frac{|}{}", example: "\\frac{a}{b}", keywords: "fraction divide division over ratio bråk kvot division" },
@@ -152,7 +165,57 @@ ApplicationWindow {
         { name: "Greek beta", insertText: "\\beta", example: "\\beta", keywords: "greek beta letter" },
         { name: "Greek theta", insertText: "\\theta", example: "\\theta", keywords: "greek theta angle letter" },
         { name: "Greek pi", insertText: "\\pi", example: "\\pi", keywords: "greek pi circle letter" },
-        { name: "Greek sigma", insertText: "\\sigma", example: "\\sigma", keywords: "greek sigma standard deviation letter" }
+        { name: "Greek sigma", insertText: "\\sigma", example: "\\sigma", keywords: "greek sigma standard deviation letter" },
+        { name: "Logical and", insertText: "\\land", example: "P \\land Q", keywords: "logic conjunction and och konjunktion diskret" },
+        { name: "Logical or", insertText: "\\lor", example: "P \\lor Q", keywords: "logic disjunction or eller disjunktion diskret" },
+        { name: "Logical not", insertText: "\\neg", example: "\\neg P", keywords: "logic negation not inte negation diskret" },
+        { name: "Divides", insertText: "\\mid", example: "a \\mid b", keywords: "divides divisibility delar delbarhet diskret" },
+        { name: "Does not divide", insertText: "\\nmid", example: "a \\nmid b", keywords: "not divides delar inte delbarhet diskret" },
+        { name: "Congruent modulo", insertText: "\\equiv | \\pmod{n}", example: "a \\equiv b \\pmod n", keywords: "congruent modulo modular arithmetic kongruent modulär aritmetik diskret" },
+        { name: "Binomial coefficient", insertText: "\\binom{n}{|}", example: "\\binom{n}{k}", keywords: "choose combination binomial kombinatorik binomialkoefficient diskret" },
+        { name: "Recurrence relation", insertText: "a_{n+1}=|", example: "a_{n+1}=2a_n+1", keywords: "recurrence recursive rekursion rekursionsformel diskret" },
+        { name: "Graph degree", insertText: "\\deg(|)", example: "\\deg(v)", keywords: "graph vertex degree grad nod graf diskret" },
+        { name: "Determinant", insertText: "\\det(|)", example: "\\det(A)", keywords: "determinant matrix linjär algebra" },
+        { name: "Matrix transpose", insertText: "^{\\mathsf T}", example: "A^{\\mathsf T}", keywords: "transpose matrix transponat linjär algebra" },
+        { name: "Matrix inverse", insertText: "^{-1}", example: "A^{-1}", keywords: "inverse matrix invers linjär algebra" },
+        { name: "Augmented matrix", insertText: "\\left[\\begin{array}{cc|c} | & b & e \\\\ c & d & f \\end{array}\\right]", example: "\\left[\\begin{array}{cc|c}a&b&e\\\\c&d&f\\end{array}\\right]", keywords: "augmented matrix system utökad matris ekvationssystem linjär algebra" },
+        { name: "Span", insertText: "\\operatorname{span}\\{|\\}", example: "\\operatorname{span}\\{v_1,v_2\\}", keywords: "span linear hull linjärt hölje linjär algebra" },
+        { name: "Dimension", insertText: "\\dim(|)", example: "\\dim(V)", keywords: "dimension vector space vektorrum linjär algebra" },
+        { name: "Rank", insertText: "\\operatorname{rank}(|)", example: "\\operatorname{rank}(A)", keywords: "rank matrix rang linjär algebra" },
+        { name: "Kernel", insertText: "\\ker(|)", example: "\\ker(T)", keywords: "kernel null space nollrum kärna linjär algebra" },
+        { name: "Image", insertText: "\\operatorname{im}(|)", example: "\\operatorname{im}(T)", keywords: "image range värderum bildrum linjär algebra" },
+        { name: "Inner product", insertText: "\\langle |, \\rangle", example: "\\langle u,v\\rangle", keywords: "inner product dot scalar skalärprodukt linjär algebra" },
+        { name: "Projection", insertText: "\\operatorname{proj}_{|}", example: "\\operatorname{proj}_{u}(v)", keywords: "projection orthogonal projektion ortogonal linjär algebra" },
+        { name: "Eigenvalue equation", insertText: "A|=\\lambda |", example: "Av=\\lambda v", keywords: "eigenvalue eigenvector egenvärde egenvektor linjär algebra" },
+        { name: "Gradient", insertText: "\\nabla |", example: "\\nabla f", keywords: "gradient multivariable flervariabel analys 2" },
+        { name: "Directional derivative", insertText: "D_{|} f", example: "D_{u}f=\\nabla f\\cdot u", keywords: "directional derivative riktningsderivata analys 2" },
+        { name: "Jacobian", insertText: "J_{|}", example: "J_f(x)", keywords: "jacobian derivative matrix jacobimatris analys 2" },
+        { name: "Hessian", insertText: "H_{|}", example: "H_f(x)", keywords: "hessian second partial matrix hessianmatris analys 2" },
+        { name: "Double integral", insertText: "\\iint_{|} \\,dA", example: "\\iint_D f(x,y)\\,dA", keywords: "double integral dubbelintegral analys 2" },
+        { name: "Triple integral", insertText: "\\iiint_{|} \\,dV", example: "\\iiint_E f(x,y,z)\\,dV", keywords: "triple integral trippelintegral analys 2" },
+        { name: "Line integral", insertText: "\\int_{|} \\,ds", example: "\\int_C f\\,ds", keywords: "line integral kurvintegral analys 2" },
+        { name: "Surface integral", insertText: "\\iint_{|} \\,dS", example: "\\iint_S f\\,dS", keywords: "surface integral ytintegral analys 2" },
+        { name: "Divergence", insertText: "\\nabla \\cdot |", example: "\\nabla\\cdot F", keywords: "divergence vector field divergens vektorfält analys 2" },
+        { name: "Curl", insertText: "\\nabla \\times |", example: "\\nabla\\times F", keywords: "curl rotation vector field rotation vektorfält analys 2" },
+        { name: "Laplacian", insertText: "\\Delta |", example: "\\Delta f", keywords: "laplacian laplace operator laplaceoperator analys 2" },
+        { name: "Truth table", insertText: "\\begin{array}{c|c|c} P & Q & P \\land Q \\\\ \\hline T&T&T \\\\ T&F&F \\\\ F&T&F \\\\ F&F&F \\end{array}", example: "P, Q, P \\land Q", keywords: "truth table logic sanningsvärdestabell sanningsvardestabell diskret" },
+        { name: "Equivalence class", insertText: "[|]_{R}", example: "[a]_{R}", keywords: "equivalence class relation ekvivalensklass relation diskret" },
+        { name: "Greatest common divisor", insertText: "\\gcd(|,)", example: "\\gcd(a,b)", keywords: "gcd greatest common divisor största gemensamma delare sgd diskret" },
+        { name: "Graph", insertText: "G=(|,)", example: "G=(V,E)", keywords: "graph vertices edges graf noder kanter diskret" },
+        { name: "Adjacency matrix", insertText: "A_{|}", example: "A_{ij}=1", keywords: "adjacency matrix graph grannmatris graf diskret" },
+        { name: "Factorial", insertText: "!", example: "n!", keywords: "factorial permutations fakultet kombinatorik diskret" },
+        { name: "Column vector", insertText: "\\begin{bmatrix} | \\\\ b \\end{bmatrix}", example: "\\begin{bmatrix}a\\\\b\\end{bmatrix}", keywords: "column vector vektor kolonn linjär algebra" },
+        { name: "Row swap", insertText: "R_{|} \\leftrightarrow R_{}", example: "R_1 \\leftrightarrow R_2", keywords: "row operation swap radoperation radbyte gauss linjär algebra" },
+        { name: "Row replacement", insertText: "R_{|} \\leftarrow R_{} + cR_{}", example: "R_2 \\leftarrow R_2-3R_1", keywords: "row operation replacement radoperation gauss linjär algebra" },
+        { name: "Linear system", insertText: "\\begin{cases} | \\\\  \\end{cases}", example: "\\begin{cases}x+y=1\\\\x-y=0\\end{cases}", keywords: "linear system equations ekvationssystem linjär algebra" },
+        { name: "Characteristic polynomial", insertText: "\\det(|-\\lambda I)", example: "\\det(A-\\lambda I)=0", keywords: "characteristic polynomial eigenvalue karakteristiskt polynom egenvärde linjär algebra" },
+        { name: "Diagonalisation", insertText: "|=PDP^{-1}", example: "A=PDP^{-1}", keywords: "diagonalization diagonalisation diagonalisering eigenvectors linjär algebra" },
+        { name: "Orthogonal complement", insertText: "|^{\\perp}", example: "W^{\\perp}", keywords: "orthogonal complement ortogonalt komplement linjär algebra" },
+        { name: "Change of variables", insertText: "\\left|\\det \\frac{\\partial(|)}{\\partial()}\\right|", example: "\\left|\\det \\frac{\\partial(x,y)}{\\partial(u,v)}\\right|", keywords: "change variables jacobian substitution variabelbyte jacobi analys 2" },
+        { name: "Polar coordinates", insertText: "|=r\\cos\\theta, \\quad =r\\sin\\theta", example: "x=r\\cos\\theta, y=r\\sin\\theta", keywords: "polar coordinates polära koordinater variabelbyte analys 2" },
+        { name: "Flux integral", insertText: "\\iint_{|} F\\cdot n\\,dS", example: "\\iint_S F\\cdot n\\,dS", keywords: "flux integral surface normal flöde ytintegral analys 2" },
+        { name: "First-order ODE", insertText: "|'+p(x)y=q(x)", example: "y'+p(x)y=q(x)", keywords: "ordinary differential equation ode differentialekvation första ordningen analys 2" },
+        { name: "Second-order ODE", insertText: "|''+ay'+by=f(x)", example: "y''+ay'+by=f(x)", keywords: "ordinary differential equation ode differentialekvation andra ordningen analys 2" }
     ]
     readonly property var latexCommandSwedishNames: ({
         "Square root": "Kvadratrot",
@@ -237,7 +300,57 @@ ApplicationWindow {
         "Greek beta": "Grekiska beta",
         "Greek theta": "Grekiska theta",
         "Greek pi": "Grekiska pi",
-        "Greek sigma": "Grekiska sigma"
+        "Greek sigma": "Grekiska sigma",
+        "Logical and": "Logiskt och",
+        "Logical or": "Logiskt eller",
+        "Logical not": "Logiskt inte",
+        "Divides": "Delar",
+        "Does not divide": "Delar inte",
+        "Congruent modulo": "Kongruent modulo",
+        "Binomial coefficient": "Binomialkoefficient",
+        "Recurrence relation": "Rekursionsformel",
+        "Graph degree": "Nodgrad",
+        "Determinant": "Determinant",
+        "Matrix transpose": "Transponerad matris",
+        "Matrix inverse": "Invers matris",
+        "Augmented matrix": "Utökad matris",
+        "Span": "Linjärt hölje",
+        "Dimension": "Dimension",
+        "Rank": "Rang",
+        "Kernel": "Kärna",
+        "Image": "Bildrum",
+        "Inner product": "Skalärprodukt",
+        "Projection": "Projektion",
+        "Eigenvalue equation": "Egenvärdesekvation",
+        "Gradient": "Gradient",
+        "Directional derivative": "Riktningsderivata",
+        "Jacobian": "Jacobimatris",
+        "Hessian": "Hessianmatris",
+        "Double integral": "Dubbelintegral",
+        "Triple integral": "Trippelintegral",
+        "Line integral": "Kurvintegral",
+        "Surface integral": "Ytintegral",
+        "Divergence": "Divergens",
+        "Curl": "Rotation",
+        "Laplacian": "Laplaceoperator"
+        ,"Truth table": "Sanningsvärdestabell"
+        ,"Equivalence class": "Ekvivalensklass"
+        ,"Greatest common divisor": "Största gemensamma delare"
+        ,"Graph": "Graf"
+        ,"Adjacency matrix": "Grannmatris"
+        ,"Factorial": "Fakultet"
+        ,"Column vector": "Kolonnvektor"
+        ,"Row swap": "Radbyte"
+        ,"Row replacement": "Radoperation"
+        ,"Linear system": "Ekvationssystem"
+        ,"Characteristic polynomial": "Karakteristiskt polynom"
+        ,"Diagonalisation": "Diagonalisering"
+        ,"Orthogonal complement": "Ortogonalt komplement"
+        ,"Change of variables": "Variabelbyte"
+        ,"Polar coordinates": "Polära koordinater"
+        ,"Flux integral": "Flödesintegral"
+        ,"First-order ODE": "Differentialekvation av första ordningen"
+        ,"Second-order ODE": "Differentialekvation av andra ordningen"
     })
 
     function commandDisplayName(englishName) {
@@ -250,17 +363,14 @@ ApplicationWindow {
         return 0.299 * color.r + 0.587 * color.g + 0.114 * color.b
     }
 
-    function looksLikeMath(source) {
-        return /\\[A-Za-z]+|[_^=]/.test(source)
-    }
-
-    function makeLine(source, kind, label, asset, slide) {
+    function makeLine(source, kind, label, asset, slide, mode) {
         return {
             source: source || "",
             kind: kind || "normal",
             label: label || "",
             asset: asset || "",
             slide: slide === undefined ? -1 : slide,
+            mode: mode || "latex",
             renderedUrl: "",
             error: "",
             math: false
@@ -269,14 +379,16 @@ ApplicationWindow {
 
     function isContinuingRowKind(kind) {
         return kind === "definition" || kind === "theorem"
-                || kind === "proof" || kind === "example"
+                || kind === "proof" || kind === "example" || kind === "remark"
+                || kind === "exercise" || kind === "solution"
+                || kind === "bullet" || kind === "numbered"
     }
 
     function makeLineAfter(index) {
         if (index >= 0 && index < lines.count) {
             var prior = lines.get(index)
             if (isContinuingRowKind(prior.kind))
-                return makeLine("", prior.kind, prior.label)
+                return makeLine("", prior.kind, prior.label, "", -1, prior.mode)
         }
         return makeLine("")
     }
@@ -290,32 +402,59 @@ ApplicationWindow {
                 kind: line.kind || "normal",
                 label: line.label || "",
                 asset: line.asset || "",
-                slide: line.slide === undefined ? -1 : line.slide
+                slide: line.slide === undefined ? -1 : line.slide,
+                mode: line.mode || "latex"
             })
         }
         return result
     }
 
+    function setDocumentSpellingLanguage(language) {
+        recordHistory()
+        spellLanguage = language === "en" ? "en" : "sv"
+        changed()
+    }
+
+    function ignoreSpellingWord(word) {
+        if (spellingIgnored.some(function(item) { return item.toLowerCase() === word.toLowerCase() })) return
+        recordHistory()
+        spellingIgnored = spellingIgnored.concat([word])
+        changed()
+    }
+
     function documentData() {
         return {
-            format: "foldtex-2",
+            format: "foldtex-3",
+            documentPath: documentPath,
+            baseRevision: documentFileRevision,
+            recoveryId: recoveryId,
             title: documentTitle,
             course: courseName,
+            noteKind: noteKind,
             lecture: lectureName,
+            problemSet: problemSetName,
             lectureDate: lectureDate,
             sourcePdf: sourcePdf,
+            spellLanguage: spellLanguage,
+            spellcheckEnabled: spellcheckEnabled,
+            spellingIgnored: spellingIgnored,
             lines: serializedLines()
         }
     }
 
     function currentStateJson() {
-        return JSON.stringify(documentData())
+        var data = documentData()
+        delete data.baseRevision
+        delete data.recoveryId
+        delete data.documentPath
+        return JSON.stringify(data)
     }
 
     function resetHistory(markSaved) {
         historyTimer.stop()
         var state = currentStateJson()
-        undoHistory = [{ state: state, active: activeIndex }]
+        syncDocumentEditor()
+        undoHistory = [{ state: state, active: activeIndex, cursor: documentEditor.sourceCursor, anchor: documentEditor.sourceAnchor }]
         redoHistory = []
         lastHistoryState = state
         if (markSaved) savedHistoryState = state
@@ -327,7 +466,7 @@ ApplicationWindow {
         var state = currentStateJson()
         if (state === lastHistoryState) return
         var next = undoHistory.slice()
-        next.push({ state: state, active: activeIndex })
+        next.push({ state: state, active: activeIndex, cursor: documentEditor.sourceCursor, anchor: documentEditor.sourceAnchor })
         if (next.length > 150) next.shift()
         undoHistory = next
         redoHistory = []
@@ -338,7 +477,11 @@ ApplicationWindow {
         if (!entry || !entry.state) return
         restoringHistory = true
         var data = JSON.parse(entry.state)
+        data.recoveryId = recoveryId
         applyDocumentData(data, entry.active)
+        documentEditor.selectSource(entry.anchor === undefined ? documentEditor.sourceCursor : entry.anchor,
+                                    entry.cursor === undefined ? documentEditor.sourceCursor : entry.cursor)
+        documentEditor.forceActiveFocus()
         lastHistoryState = entry.state
         modified = entry.state !== savedHistoryState
         saveStatus = modified ? "Saving…" : "Saved"
@@ -373,9 +516,62 @@ ApplicationWindow {
         snippetStops = []
         snippetStopIndex = -1
         snippetStopRow = -1
+        snippetExitPosition = -1
+        snippetTrackedText = ""
+        snippetSelectionChange = false
+    }
+
+    function updateSnippetText(editor, rowIndex) {
+        if (snippetSelectionChange || snippetStopRow !== rowIndex
+                || snippetStopIndex < 0 || snippetStopIndex >= snippetStops.length)
+            return
+        var nextText = editor.text
+        var priorText = snippetTrackedText
+        if (nextText === priorText) return
+        var prefix = 0
+        var shared = Math.min(priorText.length, nextText.length)
+        while (prefix < shared && priorText[prefix] === nextText[prefix]) prefix++
+        var suffix = 0
+        while (suffix < shared - prefix
+               && priorText[priorText.length - 1 - suffix]
+                  === nextText[nextText.length - 1 - suffix]) suffix++
+        var priorEditEnd = priorText.length - suffix
+        var activeStop = snippetStops[snippetStopIndex]
+        if (prefix < activeStop.start || priorEditEnd > activeStop.end) {
+            clearSnippetStops()
+            return
+        }
+        var delta = nextText.length - priorText.length
+        snippetExitPosition += delta
+        var adjusted = []
+        for (var i = 0; i < snippetStops.length; ++i) {
+            var stop = snippetStops[i]
+            if (i < snippetStopIndex)
+                adjusted.push({ start: stop.start, end: stop.end })
+            else if (i === snippetStopIndex)
+                adjusted.push({ start: stop.start, end: stop.end + delta })
+            else
+                adjusted.push({ start: stop.start + delta, end: stop.end + delta })
+        }
+        snippetStops = adjusted
+        snippetTrackedText = nextText
+    }
+
+    function updateSnippetCursor(editor, rowIndex) {
+        if (snippetSelectionChange || snippetStopRow !== rowIndex
+                || snippetStopIndex < 0 || snippetStopIndex >= snippetStops.length)
+            return
+        var stop = snippetStops[snippetStopIndex]
+        if (editor.selectionStart < stop.start || editor.selectionEnd > stop.end)
+            clearSnippetStops()
     }
 
     function insertSnippet(editor, rowIndex, from, to, template) {
+        if (editor === documentEditor && !editor.inMath()
+                && editor.text.slice(0, from).trim().length
+                && !/^\\(?:section|subsection|subsubsection|text(?:bf|it|tt|rm|sf|normal|sc|up|md)|emph|underline)\b/.test(template))
+            template = "$" + template + "$"
+        clearSnippetStops()
         if (rowIndex >= 0 && rowIndex < lines.count
                 && lines.get(rowIndex).source !== editor.text)
             lines.setProperty(rowIndex, "source", editor.text)
@@ -401,11 +597,18 @@ ApplicationWindow {
             stops.push({ start: from + start, end: from + clean.length })
             at = close + 1
         }
-        editor.remove(from, to)
-        editor.insert(from, clean)
+        if (editor === documentEditor) {
+            var firstStop = stops.length ? stops[0] : { start: from + clean.length, end: from + clean.length }
+            editor.replaceRange(from, to, clean, firstStop.start, firstStop.end)
+        } else {
+            editor.remove(from, to)
+            editor.insert(from, clean)
+        }
         snippetStops = stops
         snippetStopIndex = -1
         snippetStopRow = rowIndex
+        snippetExitPosition = from + clean.length
+        snippetTrackedText = editor.text
         advanceSnippet(editor, rowIndex)
         changed()
     }
@@ -414,11 +617,15 @@ ApplicationWindow {
         if (snippetStopRow !== rowIndex || !snippetStops.length) return false
         snippetStopIndex++
         if (snippetStopIndex >= snippetStops.length) {
+            var exitPosition = snippetExitPosition
             clearSnippetStops()
+            editor.cursorPosition = Math.min(editor.text.length, Math.max(0, exitPosition))
             return true
         }
         var stop = snippetStops[snippetStopIndex]
+        snippetSelectionChange = true
         editor.select(stop.start, stop.end)
+        snippetSelectionChange = false
         return true
     }
 
@@ -426,36 +633,19 @@ ApplicationWindow {
         if (snippetStopRow !== rowIndex || !snippetStops.length) return false
         snippetStopIndex = Math.max(0, snippetStopIndex - 1)
         var stop = snippetStops[snippetStopIndex]
+        snippetSelectionChange = true
         editor.select(stop.start, stop.end)
+        snippetSelectionChange = false
         return true
     }
 
-    function handleSnippetTab(editor, rowIndex) {
-        if (advanceSnippet(editor, rowIndex)) return true
-        var cursor = editor.cursorPosition
-        var before = editor.text.slice(0, cursor)
-        var postfix = before.match(/([^\s=+\-*\/]+)\.(sqrt|sq|cb|hat|vec|bar|inv)$/)
-        if (postfix) {
-            var expression = postfix[1]
-            var operation = postfix[2]
-            var replacement = operation === "sqrt" ? "\\sqrt{" + expression + "}"
-                    : operation === "sq" ? expression + "^{2}"
-                    : operation === "cb" ? expression + "^{3}"
-                    : operation === "hat" ? "\\hat{" + expression + "}"
-                    : operation === "vec" ? "\\vec{" + expression + "}"
-                    : operation === "bar" ? "\\overline{" + expression + "}"
-                    : "\\frac{1}{" + expression + "}"
-            insertSnippet(editor, rowIndex, cursor - postfix[0].length, cursor,
-                          replacement + "«»")
-            return true
-        }
-
-        var trigger = before.match(/([A-Za-z][A-Za-z0-9]*)$/)
-        if (!trigger) {
-            editor.insert(cursor, "    ")
-            return true
-        }
-        var snippets = {
+    function builtInSnippetTemplates() {
+        return {
+            textbf: "\\textbf{«text»}",
+            textit: "\\textit{«text»}",
+            emph: "\\emph{«text»}",
+            texttt: "\\texttt{«code»}",
+            text: "\\text{«text»}",
             sqrt: "\\sqrt{«x»}",
             root: "\\sqrt[«n»]{«x»}",
             frac: "\\frac{«a»}{«b»}",
@@ -497,10 +687,91 @@ ApplicationWindow {
             rr: "\\mathbb{R}",
             cc: "\\mathbb{C}",
             cases: "\\begin{cases} «x», & «x > 0» \\\\ «0», & «x \\leq 0» \\end{cases}",
-            mat2: "\\begin{bmatrix} «a» & «b» \\\\ «c» & «d» \\end{bmatrix}"
+            mat2: "\\begin{bmatrix} «a» & «b» \\\\ «c» & «d» \\end{bmatrix}",
+            mat3: "\\begin{bmatrix} «a» & «b» & «c» \\\\ «d» & «e» & «f» \\\\ «g» & «h» & «i» \\end{bmatrix}",
+            and: "«P» \\land «Q»",
+            or: "«P» \\lor «Q»",
+            not: "\\neg «P»",
+            choose: "\\binom{«n»}{«k»}",
+            mod: "«a» \\equiv «b» \\pmod{«n»}",
+            divides: "«a» \\mid «b»",
+            recur: "«a_{n+1}» = «formula»",
+            truth: "\\begin{array}{c|c|c} P & Q & «P \\land Q» \\\\ \\hline T&T&«T» \\\\ T&F&«F» \\\\ F&T&«F» \\\\ F&F&«F» \\end{array}",
+            equivclass: "[«a»]_{«R»}",
+            gcd: "\\gcd(«a»,«b»)",
+            graph: "«G»=(«V»,«E»)",
+            adjacency: "A_{«ij»}=«1»",
+            induct: "\\begin{aligned} &\\text{Base case: } «P(0)» \\\\ &\\text{Assume: } «P(k)» \\\\ &\\text{Show: } «P(k+1)» \\end{aligned}",
+            det: "\\det\\left( «A» \\right)",
+            trans: "«A»^{\\mathsf T}",
+            invmat: "«A»^{-1}",
+            aug: "\\left[\\begin{array}{cc|c} «a» & «b» & «e» \\\\ «c» & «d» & «f» \\end{array}\\right]",
+            span: "\\operatorname{span}\\{ «v_1», «v_2» \\}",
+            basis: "\\mathcal{B}=\\{ «v_1», «v_2» \\}",
+            dim: "\\dim(«V»)",
+            rank: "\\operatorname{rank}(«A»)",
+            ker: "\\ker(«T»)",
+            image: "\\operatorname{im}(«T»)",
+            dot: "\\left\\langle «u», «v» \\right\\rangle",
+            proj: "\\operatorname{proj}_{«u»}(«v»)",
+            eigen: "«A»«v» = «\\lambda»«v»",
+            colvec: "\\begin{bmatrix} «a» \\\\ «b» \\end{bmatrix}",
+            rowswap: "R_{«1»} \\leftrightarrow R_{«2»}",
+            rowadd: "R_{«2»} \\leftarrow R_{«2»} + «c»R_{«1»}",
+            linsys: "\\begin{cases} «a x+b y=c» \\\\ «d x+e y=f» \\end{cases}",
+            charpoly: "\\det(«A»-\\lambda I)=«0»",
+            diag: "«A»=«P»«D»«P»^{-1}",
+            orthcomp: "«W»^{\\perp}",
+            grad: "\\nabla «f»",
+            dirder: "D_{«u»} «f» = \\nabla «f» \\cdot «u»",
+            jac: "J_{«f»}(«x»)",
+            hess: "H_{«f»}(«x»)",
+            dint: "\\iint_{«D»} «f(x,y)»\\,d«A»",
+            tint: "\\iiint_{«E»} «f(x,y,z)»\\,d«V»",
+            lint: "\\int_{«C»} «f»\\,d«s»",
+            sint: "\\iint_{«S»} «f»\\,d«S»",
+            div: "\\nabla \\cdot «F»",
+            curl: "\\nabla \\times «F»",
+            laplace: "\\Delta «f»",
+            changevar: "\\left|\\det \\frac{\\partial(«x,y»)}{\\partial(«u,v»)}\\right|",
+            polar: "«x»=«r»\\cos «\\theta», \\quad «y»=«r»\\sin «\\theta»",
+            flux: "\\iint_{«S»} «F»\\cdot «n»\\,dS",
+            ode1: "«y»' + «p(x)»«y» = «q(x)»",
+            ode2: "«y»'' + «a»«y»' + «b»«y» = «f(x)»"
         }
-        var template = snippets[trigger[1].toLowerCase()]
+    }
+
+    function handleSnippetTab(editor, rowIndex) {
+        var cursor = editor.cursorPosition
+        var before = editor.text.slice(0, cursor)
+        var postfix = before.match(/([^\s=+\-*\/]+)\.(sqrt|sq|cb|hat|vec|bar|inv)$/)
+        if (postfix) {
+            var expression = postfix[1]
+            var operation = postfix[2]
+            var replacement = operation === "sqrt" ? "\\sqrt{" + expression + "}"
+                    : operation === "sq" ? expression + "^{2}"
+                    : operation === "cb" ? expression + "^{3}"
+                    : operation === "hat" ? "\\hat{" + expression + "}"
+                    : operation === "vec" ? "\\vec{" + expression + "}"
+                    : operation === "bar" ? "\\overline{" + expression + "}"
+                    : "\\frac{1}{" + expression + "}"
+            insertSnippet(editor, rowIndex, cursor - postfix[0].length, cursor,
+                          replacement + "«»")
+            return true
+        }
+
+        var trigger = before.match(/([A-Za-z][A-Za-z0-9]*)$/)
+        if (!trigger) {
+            if (advanceSnippet(editor, rowIndex)) return true
+            editor.insert(cursor, "    ")
+            return true
+        }
+        var snippets = builtInSnippetTemplates()
+        var customSnippet = backend.customSnippet(trigger[1], courseName)
+        var template = customSnippet.found
+                ? customSnippet.template : snippets[trigger[1].toLowerCase()]
         if (!template) {
+            if (advanceSnippet(editor, rowIndex)) return true
             editor.insert(cursor, "    ")
             return true
         }
@@ -510,6 +781,7 @@ ApplicationWindow {
 
     function changed() {
         if (loading) return
+        if (!editingDocument) syncDocumentEditor()
         modified = true
         saveStatus = "Saving…"
         recoveryTimer.restart()
@@ -517,8 +789,47 @@ ApplicationWindow {
     }
 
     function saveRecoveryNow() {
-        backend.saveRecoveryData(documentData())
-        saveStatus = "Saved"
+        var data = documentData()
+        var primarySaved = false
+        data.recoveryDirty = modified
+        if (documentPath.length && modified) {
+            data.recoveryDirty = false
+            var checkedSave = backend.saveDocumentDataChecked(
+                        documentPath, data, documentFileRevision)
+            if (!checkedSave.saved) {
+                saveStatus = checkedSave.conflict
+                        ? "Changed outside — recovery saved" : "Save failed"
+                data.recoveryDirty = true
+                var recovered = backend.saveRecoveryData(data)
+                if (!recovered) {
+                    saveStatus = "Recovery failed"
+                    messageDialog.message = "FoldTeX could not save this note or its Recovery copy. Keep the app open and use Save As to another folder."
+                    messageDialog.open()
+                    return false
+                }
+                if (checkedSave.conflict && !externalConflictShown) {
+                    externalConflictShown = true
+                    messageDialog.message = "This note changed outside FoldTeX. Your work is safe in Recovery. Reload the file or use Save As so neither copy is lost."
+                    messageDialog.open()
+                }
+                return true
+            }
+            documentFileRevision = checkedSave.revision
+            externalConflictShown = false
+            primarySaved = true
+            modified = false
+            saveStatus = "Saved"
+            savedHistoryState = currentStateJson()
+            data = documentData()
+            data.recoveryDirty = false
+            backend.rememberNoteFolder(documentPath)
+        }
+        if (!backend.saveRecoveryData(data)) {
+            saveStatus = "Recovery failed"
+            return primarySaved || (documentPath.length && !modified)
+        }
+        if (!documentPath.length) saveStatus = "Recovery saved"
+        return true
     }
 
     function quitApp() {
@@ -526,10 +837,12 @@ ApplicationWindow {
         Qt.quit()
     }
 
-    function documentHasText() {
+    function documentHasContent() {
         for (var i = 0; i < lines.count; ++i)
-            if (lines.get(i).source.trim().length) return true
-        return false
+            if (lines.get(i).source.trim().length || lines.get(i).asset.length) return true
+        return (documentTitle.trim().length && documentTitle !== "Untitled notes")
+                || courseName.trim().length
+                || lectureName.trim().length || problemSetName.trim().length
     }
 
     function startNewDocument() {
@@ -540,11 +853,19 @@ ApplicationWindow {
         lines.append(makeLine(""))
         activeIndex = 0
         documentPath = ""
+        documentFileRevision = ""
+        externalConflictShown = false
+        recoveryId = backend.newRecoveryId()
         documentTitle = "Untitled notes"
         courseName = ""
+        noteKind = "lecture"
         lectureName = ""
+        problemSetName = ""
         lectureDate = ""
         sourcePdf = ""
+        spellLanguage = "sv"
+        spellcheckEnabled = true
+        spellingIgnored = []
         pdfOpen = false
         displayMode = 0
         modified = false
@@ -554,13 +875,17 @@ ApplicationWindow {
         Qt.callLater(function() { win.editLine(0) })
     }
 
-    function startNewDocumentWithDetails(title, course, lecture, date) {
+    function startNewDocumentWithDetails(kind, title, course, lecture, problemSet, date) {
         startNewDocument()
         documentTitle = title.trim().length ? title.trim()
+                                             : kind === "problem-solving"
+                                               && problemSet.trim().length ? problemSet.trim()
                                              : lecture.trim().length ? lecture.trim()
                                                                      : "Untitled notes"
         courseName = course.trim()
-        lectureName = lecture.trim()
+        noteKind = kind === "problem-solving" ? "problem-solving" : "lecture"
+        lectureName = noteKind === "lecture" ? lecture.trim() : ""
+        problemSetName = noteKind === "problem-solving" ? problemSet.trim() : ""
         lectureDate = date.trim()
         resetHistory(true)
         saveRecoveryNow()
@@ -571,17 +896,24 @@ ApplicationWindow {
     }
 
     function requestNewDocument() {
-        if (documentHasText() && (modified || !documentPath.length))
-            newDocumentDialog.open()
-        else
-            openNewDocumentSetup()
+        if (!saveRecoveryNow()) return
+        var course = courseName
+        startNewDocument()
+        courseName = course
+        resetHistory(true)
     }
 
-    onClosing: saveRecoveryNow()
+    onClosing: function(close) {
+        if (!saveRecoveryNow()) {
+            close.accepted = false
+            messageDialog.message = "FoldTeX could not save this note or its recovery copy."
+            messageDialog.open()
+        }
+    }
 
     Timer {
         id: recoveryTimer
-        interval: 300
+        interval: 1000
         repeat: false
         onTriggered: win.saveRecoveryNow()
     }
@@ -596,7 +928,7 @@ ApplicationWindow {
     Timer {
         interval: 300000
         repeat: true
-        running: win.documentHasText()
+        running: win.documentHasContent()
         onTriggered: backend.saveSnapshot(win.documentData())
     }
 
@@ -606,118 +938,11 @@ ApplicationWindow {
         interval: 2600
     }
 
-    Timer {
-        id: renderQueueTimer
-        interval: 0
-        repeat: false
-        onTriggered: win.renderNextQueuedLine()
-    }
-
-    function renderLine(index) {
-        if (index < 0 || index >= lines.count) return
-        renderQueueTimer.stop()
-        var queued = []
-        for (var i = 0; i < renderQueue.length; ++i)
-            if (renderQueue[i] !== index) queued.push(renderQueue[i])
-        queued.unshift(index)
-        renderQueue = queued
-        if (!renderJobActive) renderQueueTimer.start()
-    }
-
-    function lineIsVisible(index) {
-        var item = list.itemAtIndex(index)
-        if (!item) return false
-        return item.y + item.height >= list.contentY
-                && item.y <= list.contentY + list.height
-    }
-
-    function renderQueueHasVisiblePrefix() {
-        var passedVisibleRows = false
-        for (var i = 0; i < renderQueue.length; ++i) {
-            if (lineIsVisible(renderQueue[i])) {
-                if (passedVisibleRows) return false
-            } else {
-                passedVisibleRows = true
-            }
-        }
-        return true
-    }
-
-    function queueRenders(includeActiveLine) {
-        renderQueueTimer.stop()
-        var visible = []
-        var later = []
-        for (var i = 0; i < lines.count; ++i) {
-            if (!includeActiveLine && i === activeIndex) continue
-            if (lineIsVisible(i)) visible.push(i)
-            else later.push(i)
-        }
-        queuedVisibleCount = visible.length
-        renderQueue = visible.concat(later)
-        if (renderQueue.length && !renderJobActive) renderQueueTimer.start()
-    }
-
-    function renderNextQueuedLine() {
-        if (renderJobActive) return
-        while (renderQueue.length) {
-            var queued = renderQueue.slice()
-            var index = queued.shift()
-            renderQueue = queued
-            if (index < 0 || index >= lines.count) continue
-            var source = lines.get(index).source.trim()
-            if (!source.length) {
-                lines.setProperty(index, "renderedUrl", "")
-                lines.setProperty(index, "error", "")
-                lines.setProperty(index, "math", false)
-                continue
-            }
-            var math = looksLikeMath(source)
-            lines.setProperty(index, "math", math)
-            if (!math) {
-                lines.setProperty(index, "renderedUrl", "")
-                lines.setProperty(index, "error", "")
-                continue
-            }
-            renderJobActive = true
-            pendingRenderRequestId = ++renderRequestId
-            pendingRenderIndex = index
-            pendingRenderSource = source
-            pendingRenderColor = backend.themeForeground
-            pendingRenderSize = win.editorSize
-            backend.renderAsync(pendingRenderRequestId, source,
-                                pendingRenderColor, pendingRenderSize)
-            return
-        }
-    }
-
-    function finishQueuedRender(requestId, result) {
-        if (requestId !== pendingRenderRequestId) return
-        if (pendingRenderIndex >= 0 && pendingRenderIndex < lines.count
-                && lines.get(pendingRenderIndex).source.trim() === pendingRenderSource
-                && backend.themeForeground === pendingRenderColor
-                && win.editorSize === pendingRenderSize) {
-            lines.setProperty(pendingRenderIndex, "renderedUrl", result.url || "")
-            lines.setProperty(pendingRenderIndex, "error", result.error
-                              ? backend.latexHint(pendingRenderSource, result.error) : "")
-        }
-        renderJobActive = false
-        pendingRenderIndex = -1
-        pendingRenderSource = ""
-        if (renderQueue.length) renderQueueTimer.start()
-    }
-
-    function cancelQueuedRenders() {
-        renderQueueTimer.stop()
-        renderQueue = []
-    }
-
-    function renderAll() {
-        queueRenders(false)
-    }
-
-    function renderEveryLine() {
-        queueRenders(true)
-    }
+    function renderLine(index) { syncDocumentEditor() }
+    function queueRenders(includeActiveLine) { syncDocumentEditor(); documentEditor.refresh() }
+    function cancelQueuedRenders() { documentEditor.cancelRenders() }
+    function renderAll() { syncDocumentEditor() }
+    function renderEveryLine() { queueRenders(true) }
 
     function clearLineSelection() {
         selectionAnchor = -1
@@ -731,7 +956,7 @@ ApplicationWindow {
     function extendLineSelection(index) {
         if (selectionAnchor < 0) selectionAnchor = activeIndex
         selectionEnd = Math.max(0, Math.min(lines.count - 1, index))
-        list.positionViewAtIndex(selectionEnd, ListView.Contain)
+        documentEditor.revealRow(selectionEnd)
     }
 
     function extendLineSelectionBy(amount) {
@@ -740,9 +965,7 @@ ApplicationWindow {
     }
 
     function scrollDocumentBy(amount) {
-        var minimum = list.originY
-        var maximum = Math.max(minimum, minimum + list.contentHeight - list.height)
-        list.contentY = Math.max(minimum, Math.min(maximum, list.contentY + amount))
+        documentEditor.scrollBy(amount)
     }
 
     function wheelDistance(pixelDelta, angleDelta) {
@@ -791,16 +1014,17 @@ ApplicationWindow {
         var after = editor.text.slice(end)
         var current = lines.get(index)
         lines.set(index, makeLine(before + parts[0], current.kind, current.label,
-                                  current.asset, current.slide))
+                                  current.asset, current.slide, current.mode))
         for (var i = 1; i < parts.length; ++i) {
             var source = parts[i] + (i === parts.length - 1 ? after : "")
-            lines.insert(index + i, makeLine(source, current.kind, current.label))
+            lines.insert(index + i, makeLine(source, current.kind, current.label,
+                                             "", -1, current.mode))
         }
         activeIndex = index + parts.length - 1
         changed()
         Qt.callLater(function() {
-            list.positionViewAtIndex(activeIndex, ListView.Contain)
-            var item = list.itemAtIndex(activeIndex)
+            documentEditor.revealRow(activeIndex)
+            var item = { currentContent: documentEditor }
             if (item && item.currentContent) {
                 item.currentContent.cursorPosition = parts[parts.length - 1].length
                 item.currentContent.forceActiveFocus()
@@ -816,13 +1040,13 @@ ApplicationWindow {
         var joined = lines.get(index - 1).source + editor.text
         var prior = lines.get(index - 1)
         lines.set(index - 1, makeLine(joined, prior.kind, prior.label,
-                                      prior.asset, prior.slide))
+                                      prior.asset, prior.slide, prior.mode))
         lines.remove(index)
         activeIndex = index - 1
         changed()
         Qt.callLater(function() {
-            list.positionViewAtIndex(activeIndex, ListView.Contain)
-            var item = list.itemAtIndex(activeIndex)
+            documentEditor.revealRow(activeIndex)
+            var item = { currentContent: documentEditor }
             if (item && item.currentContent) item.currentContent.cursorPosition = priorLength
         })
         return true
@@ -836,7 +1060,7 @@ ApplicationWindow {
         var joined = editor.text + lines.get(index + 1).source
         var current = lines.get(index)
         lines.set(index, makeLine(joined, current.kind, current.label,
-                                  current.asset, current.slide))
+                                  current.asset, current.slide, current.mode))
         lines.remove(index + 1)
         changed()
         Qt.callLater(function() { editor.cursorPosition = cursor })
@@ -846,17 +1070,31 @@ ApplicationWindow {
     function editLine(index) {
         if (index < 0 || index >= lines.count) return
         clearLineSelection()
-        if (displayMode !== 0) displayMode = 0
+        if (displayMode === 2) displayMode = 0
         if (index !== snippetStopRow) clearSnippetStops()
-        if (activeIndex !== index) renderLine(activeIndex)
+        syncDocumentEditor()
+        documentEditor.editRow(index)
         activeIndex = index
-        Qt.callLater(function() {
-            list.positionViewAtIndex(index, ListView.Contain)
-            var rowItem = list.itemAtIndex(index)
-            if (rowItem && rowItem.currentContent
-                    && rowItem.currentContent.forceActiveFocus)
-                rowItem.currentContent.forceActiveFocus()
-        })
+    }
+
+    function syncDocumentEditor() {
+        if (syncingDocument || editingDocument || !documentEditor) return
+        syncingDocument = true
+        documentEditor.loadRows(serializedLines())
+        syncingDocument = false
+    }
+
+    function beginDocumentEdit(separate) {
+        if (separate || !historyTimer.running) {
+            recordHistory()
+            if (undoHistory.length) {
+                var history = undoHistory.slice()
+                var last = history[history.length - 1]
+                history[history.length - 1] = { state: last.state, active: activeIndex,
+                    cursor: documentEditor.sourceCursor, anchor: documentEditor.sourceAnchor }
+                undoHistory = history
+            }
+        }
     }
 
     function focusBlankWritingArea() {
@@ -875,14 +1113,175 @@ ApplicationWindow {
         Qt.callLater(function() { win.editLine(target) })
     }
 
-    function activeEditorItem() {
-        var rowItem = list.itemAtIndex(activeIndex)
-        return rowItem ? rowItem.currentContent : null
-    }
+    function activeEditorItem() { return documentEditor }
+
+    function rowContextMenu(index) { return documentRowMenu }
 
     function documentEditorHasFocus() {
         var editor = activeEditorItem()
         return editor && editor.activeFocus
+    }
+
+    function insertBlockBreak(editor, index) {
+        if (!editor || index < 0 || index >= lines.count) return false
+        var source = editor.text
+        var isMath = editor.forceMath === true
+        var start = Math.min(editor.selectionStart, editor.selectionEnd)
+        var end = Math.max(editor.selectionStart, editor.selectionEnd)
+        var prefix = ""
+        var suffix = ""
+        var breakText = "\n"
+        if (isMath) {
+            // Keep explicit math delimiters outside the alignment environment.
+            var trimmed = source.trim()
+            var pairs = [["\\[", "\\]"], ["\\(", "\\)"], ["$$", "$$"], ["$", "$"]]
+            for (var p = 0; p < pairs.length; ++p) {
+                var pair = pairs[p]
+                if (trimmed.length >= pair[0].length + pair[1].length
+                        && trimmed.startsWith(pair[0]) && trimmed.endsWith(pair[1])) {
+                    var offset = source.indexOf(trimmed) + pair[0].length
+                    var limit = offset + trimmed.length - pair[0].length - pair[1].length
+                    prefix = source.slice(0, offset)
+                    suffix = source.slice(limit)
+                    source = source.slice(offset, limit)
+                    start = Math.max(0, Math.min(source.length, start - offset))
+                    end = Math.max(start, Math.min(source.length, end - offset))
+                    break
+                }
+            }
+
+            // Keep delimiter whitespace outside a newly inserted aligned block.
+            // Blank source lines inside aligned become illegal TeX paragraphs.
+            if (source.trim().length) {
+                var leading = source.match(/^\s*/)[0]
+                var trailing = source.match(/\s*$/)[0]
+                prefix += leading
+                suffix = trailing + suffix
+                source = source.slice(leading.length, source.length - trailing.length)
+                start = Math.max(0, Math.min(source.length, start - leading.length))
+                end = Math.max(start, Math.min(source.length, end - leading.length))
+            }
+
+            // Inspect the cursor's context, not just whether an environment exists
+            // somewhere in the block. Escaped braces and comments are not groups.
+            var tokens = /\\(begin|end)\{([^}]+)\}|\\([A-Za-z]+)\s*\{|\\.|[{}]|%[^\n]*/g
+            var groups = []
+            var environments = []
+            var token
+            while ((token = tokens.exec(source)) && tokens.lastIndex <= start) {
+                if (token[1] === "begin")
+                    environments.push({ name: token[2], start: tokens.lastIndex })
+                else if (token[1] === "end") environments.pop()
+                else if (token[3] || token[0] === "{") groups.push(token[0])
+                else if (token[0] === "}") groups.pop()
+            }
+            var environment = environments.length ? environments[environments.length - 1] : null
+            var hasRowEnvironment = environment
+                    && /^(align\*?|aligned|alignedat|gather\*?|gathered|array|cases|split|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix)$/.test(environment.name)
+            var leftAligned = !hasRowEnvironment
+                    || (environment.name === "aligned"
+                        && /^\s*&/.test(source.slice(environment.start)))
+            breakText = " \\\\\n" + (leftAligned ? "&" : "")
+
+            // A break inside prose must close and reopen its text groups so that
+            // the LaTeX row separator belongs to aligned, not to \\text.
+            var textGroups = groups.length > 0
+                    && /^\\text(?:rm|sf|tt|normal|bf|md|it|up|sl|sc)?\s*\{$/.test(groups[0])
+            for (var g = 1; textGroups && g < groups.length; ++g)
+                textGroups = groups[g] === "{"
+                        || /^\\(?:text(?:rm|sf|tt|normal|bf|md|it|up|sl|sc)?|emph)\s*\{$/.test(groups[g])
+            if (textGroups)
+                breakText = "}".repeat(groups.length) + breakText + groups.join("")
+            if (!hasRowEnvironment) {
+                prefix += "\\begin{aligned}\n&"
+                suffix = "\n\\end{aligned}" + suffix
+            }
+        }
+        var next = prefix + source.slice(0, start) + breakText + source.slice(end) + suffix
+        var cursor = prefix.length + start + breakText.length
+
+        recordHistory()
+        editor.text = next
+        editor.cursorPosition = cursor
+        return true
+    }
+
+    function documentBlockBreak() {
+        var editor = documentEditor
+        var source = editor.text
+        var span = editor.mathAtCursor()
+        var start = span.start === undefined ? 0 : span.start
+        var end = span.end === undefined ? source.length : span.end
+        var fragment = {
+            text: source.slice(start, end),
+            selectionStart: Math.max(0, editor.selectionStart - start),
+            selectionEnd: Math.max(0, editor.selectionEnd - start),
+            cursorPosition: editor.cursorPosition - start,
+            forceMath: span.start !== undefined,
+            forceText: span.start === undefined
+        }
+        if (insertBlockBreak(fragment, activeIndex)) {
+            editor.text = source.slice(0, start) + fragment.text + source.slice(end)
+            editor.cursorPosition = start + fragment.cursorPosition
+        }
+    }
+
+    function updateInlineCompletion() {
+        var prefix = documentEditor.completionPrefix
+        inlineCompletionResults.clear()
+        if (!prefix.length) { inlineCompletion.close(); return }
+        for (var i = 0; i < latexCommands.length; ++i) {
+            var command = latexCommands[i]
+            var match = /^\\([A-Za-z]+)/.exec(command.insertText)
+            if (match && match[1].startsWith(prefix))
+                inlineCompletionResults.append({ command: match[1], label: commandDisplayName(command.name),
+                                                 insertion: command.insertText })
+            if (inlineCompletionResults.count >= 6) break
+        }
+        if (inlineCompletionResults.count) {
+            inlineSuggestions.currentIndex = 0
+            inlineCompletion.open()
+        } else inlineCompletion.close()
+    }
+
+    function acceptInlineCompletion() {
+        if (!inlineCompletionResults.count) return
+        var suggestion = inlineCompletionResults.get(Math.max(0, inlineSuggestions.currentIndex))
+        var prefix = documentEditor.completionPrefix
+        var cursor = documentEditor.cursorPosition
+        var template = builtInSnippetTemplates()[suggestion.command]
+                || suggestion.insertion.replace("|", "«»")
+        inlineCompletion.close()
+        insertSnippet(documentEditor, activeIndex, cursor - prefix.length - 1, cursor, template)
+        inlineCompletion.close()
+        documentEditor.forceActiveFocus()
+    }
+
+    ListModel { id: inlineCompletionResults }
+    Popup {
+        id: inlineCompletion
+        parent: documentEditor
+        x: Math.min(documentEditor.width - width - 16, documentEditor.cursorRectangle.x)
+        y: documentEditor.cursorRectangle.y + documentEditor.cursorRectangle.height + height + 12 < documentEditor.height
+           ? documentEditor.cursorRectangle.y + documentEditor.cursorRectangle.height + 6
+           : Math.max(0, documentEditor.cursorRectangle.y - height - 6)
+        width: Math.min(380, documentEditor.width - 32)
+        height: Math.min(6, inlineCompletionResults.count) * 40 + 12
+        padding: 6
+        focus: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        contentItem: ListView {
+            id: inlineSuggestions
+            model: inlineCompletionResults
+            clip: true
+            delegate: ItemDelegate {
+                width: inlineSuggestions.width
+                height: 40
+                text: "\\" + model.command + "   " + model.label
+                highlighted: index === inlineSuggestions.currentIndex
+                onClicked: { inlineSuggestions.currentIndex = index; win.acceptInlineCompletion() }
+            }
+        }
     }
 
     function keyboardScrollDocument(amount) {
@@ -891,33 +1290,102 @@ ApplicationWindow {
     }
 
     function commitLine(index) {
-        renderLine(index)
-        if (index === lines.count - 1) {
-            recordHistory()
-            lines.append(makeLineAfter(index))
-        }
-        activeIndex = Math.min(index + 1, lines.count - 1)
+        if (documentEditor.activeRow !== index) editLine(index)
+        documentEditor.pasteText("\n")
+    }
+
+    function insertLineAfter(index) {
+        if (index < 0 || index >= lines.count) return
+        recordHistory()
+        var target = index + 1
+        lines.insert(target, makeLineAfter(index))
+        activeIndex = target
         changed()
-        Qt.callLater(function() { list.positionViewAtIndex(activeIndex, ListView.Contain) })
+        Qt.callLater(function() {
+            documentEditor.revealRow(target)
+            win.editLine(target)
+        })
     }
 
     function saveTo(path) {
-        if (!path) return
+        if (!path) return false
+        path = backend.normalizedPath(path)
         recordHistory()
-        if (backend.saveDocumentData(path, documentData())) {
+        var oldAssets = []
+        for (var i = 0; i < lines.count; ++i) oldAssets.push(lines.get(i).asset || "")
+        var oldPdf = sourcePdf
+        if (!prepareImageAssets(path)) {
+            for (var j = 0; j < lines.count && j < oldAssets.length; ++j)
+                lines.setProperty(j, "asset", oldAssets[j])
+            sourcePdf = oldPdf
+            return false
+        }
+        var checkedSave = backend.saveDocumentDataChecked(
+                    path, documentData(), path === backend.normalizedPath(documentPath)
+                    ? documentFileRevision : null)
+        if (checkedSave.saved) {
             documentPath = path
+            documentFileRevision = checkedSave.revision
+            externalConflictShown = false
             modified = false
             saveStatus = "Saved"
             savedHistoryState = currentStateJson()
             backend.saveSnapshot(documentData())
+            backend.rememberNoteFolder(path)
+            saveRecoveryNow()
+            for (var savedIndex = 0; savedIndex < lines.count
+                 && savedIndex < oldAssets.length; ++savedIndex) {
+                if (oldAssets[savedIndex].length
+                        && oldAssets[savedIndex] !== lines.get(savedIndex).asset)
+                    backend.removeTemporaryAsset(oldAssets[savedIndex])
+            }
+            return true
         }
+        for (var k = 0; k < lines.count && k < oldAssets.length; ++k)
+            lines.setProperty(k, "asset", oldAssets[k])
+        sourcePdf = oldPdf
+        var recoveryData = documentData()
+        recoveryData.recoveryDirty = true
+        var recoverySaved = backend.saveRecoveryData(recoveryData)
+        messageDialog.message = recoverySaved
+                ? (checkedSave.conflict
+                   ? "This note changed outside FoldTeX. Use Save As or reload it. Your current work remains in Recovery."
+                   : "Could not save the note. Your current work remains in Recovery.")
+                : "FoldTeX could not save this note or its Recovery copy. Keep the app open and use Save As to another folder."
+        messageDialog.open()
+        return false
+    }
+
+    function prepareImageAssets(path) {
+        if (documentPath === path) return true
+        for (var i = 0; i < lines.count; ++i) {
+            var line = lines.get(i)
+            if (line.kind !== "image" || !line.asset.length) continue
+            var result = backend.adoptAsset(path, line.asset)
+            if (result.error) {
+                messageDialog.message = result.error
+                messageDialog.open()
+                return false
+            }
+            lines.setProperty(i, "asset", result.path)
+        }
+        if (sourcePdf.length) {
+            var pdfResult = backend.importPdf(path, sourcePdf)
+            if (pdfResult.error) {
+                messageDialog.message = pdfResult.error
+                messageDialog.open()
+                return false
+            }
+            sourcePdf = pdfResult.path
+        }
+        return true
     }
 
     function cycleDisplayMode() {
         cancelQueuedRenders()
         displayMode = (displayMode + 1) % 3
         clearLineSelection()
-        if (displayMode === 2) renderEveryLine()
+        documentEditor.forceActiveFocus()
     }
 
     function displayModeName() {
@@ -930,12 +1398,64 @@ ApplicationWindow {
 
     function setActiveRowKind(kind) {
         if (activeIndex < 0 || activeIndex >= lines.count) return
-        recordHistory()
         lines.setProperty(activeIndex, "kind", kind)
         lines.setProperty(activeIndex, "label",
                           kind === "normal" ? "" : kind.charAt(0).toUpperCase() + kind.slice(1))
         changed()
         rowTypePopup.close()
+    }
+
+    function moveActiveRow(amount) {
+        if (activeIndex < 0 || activeIndex >= lines.count) return
+        var target = Math.max(0, Math.min(lines.count - 1, activeIndex + amount))
+        if (target === activeIndex) return
+        recordHistory()
+        var row = lines.get(activeIndex)
+        lines.remove(activeIndex)
+        lines.insert(target, makeLine(row.source, row.kind, row.label,
+                                      row.asset, row.slide, row.mode))
+        activeIndex = target
+        changed()
+        Qt.callLater(function() { documentEditor.revealRow(activeIndex) })
+    }
+
+    function duplicateActiveRow() {
+        if (activeIndex < 0 || activeIndex >= lines.count) return
+        recordHistory()
+        var row = lines.get(activeIndex)
+        var target = activeIndex + 1
+        lines.insert(target, makeLine(row.source, row.kind, row.label,
+                                      row.asset, row.slide, row.mode))
+        activeIndex = target
+        changed()
+        Qt.callLater(function() { editLine(target) })
+    }
+
+    function deleteActiveRow() {
+        if (activeIndex < 0 || activeIndex >= lines.count) return
+        selectionAnchor = activeIndex
+        selectionEnd = activeIndex
+        deleteSelectedLines()
+    }
+
+    function listRowNumber(index) {
+        if (index < 0 || index >= lines.count || lines.get(index).kind !== "numbered") return 0
+        var number = 1
+        for (var i = index - 1; i >= 0 && lines.get(i).kind === "numbered"; --i) number++
+        return number
+    }
+
+    function editImageCaption(index) {
+        if (index < 0 || index >= lines.count || lines.get(index).kind !== "image") return
+        imageCaptionDialog.rowIndex = index
+        imageCaptionField.text = lines.get(index).source || ""
+        imageCaptionDialog.open()
+    }
+
+    function replaceImage(index) {
+        if (index < 0 || index >= lines.count || lines.get(index).kind !== "image") return
+        replaceImageDialog.rowIndex = index
+        replaceImageDialog.open()
     }
 
     function addCatchupMarker() {
@@ -958,9 +1478,14 @@ ApplicationWindow {
         recordHistory()
         var target = Math.max(0, Math.min(activeIndex + 1, lines.count))
         lines.insert(target, makeLine("", "image", "Figure", result.path, -1))
-        activeIndex = target
+        var writingTarget = target + 1
+        if (writingTarget >= lines.count
+                || lines.get(writingTarget).kind !== "normal"
+                || lines.get(writingTarget).source.length !== 0)
+            lines.insert(writingTarget, makeLine(""))
+        activeIndex = writingTarget
         changed()
-        Qt.callLater(function() { list.positionViewAtIndex(target, ListView.Contain) })
+        Qt.callLater(function() { editLine(writingTarget) })
     }
 
     function pasteClipboardImage() {
@@ -968,11 +1493,6 @@ ApplicationWindow {
     }
 
     function openFigureEditor() {
-        if (!documentPath.length) {
-            messageDialog.message = "Save the note before drawing a figure"
-            messageDialog.open()
-            return
-        }
         figureEditor.open()
     }
 
@@ -1039,9 +1559,134 @@ ApplicationWindow {
         courseResultList.currentIndex = courseResults.count ? 0 : -1
     }
 
+    function noteLibrarySortKey() {
+        return noteLibrarySort.currentIndex === 1 ? "date"
+                : noteLibrarySort.currentIndex === 2 ? "title"
+                : noteLibrarySort.currentIndex === 3 ? "course" : "updated"
+    }
+
+    function highlightLibraryPreview(source, query) {
+        var escaped = source.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;")
+        var terms = query.trim().split(/\s+/)
+        for (var i = 0; i < terms.length; ++i) {
+            if (!terms[i].length) continue
+            var htmlTerm = terms[i].replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                                   .replace(/>/g, "&gt;")
+            var pattern = htmlTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            escaped = escaped.replace(new RegExp("(" + pattern + ")", "gi"), "<b>$1</b>")
+        }
+        return escaped
+    }
+
+    function refreshNoteLibrary() {
+        noteLibraryResults.clear()
+        var course = noteLibraryCourse.currentIndex > 0
+                ? noteLibraryCourse.currentText : ""
+        var kind = noteLibraryKind.currentIndex === 1 ? "lecture"
+                : noteLibraryKind.currentIndex === 2 ? "problem-solving" : ""
+        var found = backend.noteLibrary(noteLibrarySearch.text, noteLibrarySortKey(),
+                                        course, kind)
+        for (var i = 0; i < found.length; ++i)
+            noteLibraryResults.append(found[i])
+        noteLibraryList.currentIndex = noteLibraryResults.count ? 0 : -1
+    }
+
+    function refreshNoteLibraryState() {
+        var state = backend.noteLibraryState()
+        noteLibraryCourses.clear()
+        noteLibraryCourses.append({ label: "All courses" })
+        var courses = state.courses || []
+        for (var i = 0; i < courses.length; ++i)
+            noteLibraryCourses.append({ label: courses[i] })
+        noteLibraryFolders.clear()
+        var folders = state.folders || []
+        for (var j = 0; j < folders.length; ++j)
+            noteLibraryFolders.append(folders[j])
+        noteLibraryLastNote = state.lastNote || ({})
+    }
+
+    function openNoteLibrary() {
+        backend.rememberNoteFolder(documentPath)
+        refreshNoteLibraryState()
+        noteLibraryPopup.open()
+    }
+
+    function refreshRecoveries() {
+        recoveryResults.clear()
+        var found = backend.recoveryEntries()
+        for (var i = 0; i < found.length; ++i) recoveryResults.append(found[i])
+    }
+
+    function openRecoveryCenter() {
+        refreshRecoveries()
+        recoveryPopup.open()
+    }
+
+    function restoreRecovery(item) {
+        if (!item || !item.path) return
+        if (!saveRecoveryNow()) return
+        var data = backend.loadDocument(item.path)
+        if (data.error) {
+            messageDialog.message = data.error
+            messageDialog.open()
+            return
+        }
+        data.recoveryDirty = true
+        loadData(data, data.documentPath || "")
+        recoveryPopup.close()
+        noteLibraryPopup.close()
+        Qt.callLater(function() { editLine(activeIndex) })
+    }
+
+    function openLibraryNote(item) {
+        if (!item) return
+        if (!saveRecoveryNow()) return
+        var data = backend.loadDocument(item.path)
+        if (data.error) {
+            messageDialog.message = data.error
+            messageDialog.open()
+            return
+        }
+        loadData(data, item.path)
+        backend.rememberOpenedNote(item.path)
+        noteLibraryPopup.close()
+        Qt.callLater(function() { editLine(activeIndex) })
+    }
+
+    function openDocumentPath(path) {
+        if (!path || !saveRecoveryNow()) return
+        var data = backend.loadDocument(path)
+        if (data.error) {
+            messageDialog.message = data.error
+            messageDialog.open()
+            return
+        }
+        loadData(data, path)
+        Qt.callLater(function() { editLine(activeIndex) })
+    }
+
+    function toggleLibraryPin(item) {
+        backend.setNotePinned(item.path, !item.pinned)
+        refreshNoteLibrary()
+        refreshNoteLibraryState()
+    }
+
+    function newNoteForLibraryCourse() {
+        if (documentHasContent() && (modified || !documentPath.length)) {
+            messageDialog.message = "Save or close the current note before starting another note"
+            messageDialog.open()
+            return
+        }
+        newDocumentCoursePreset = noteLibraryCourse.currentIndex > 0
+                ? noteLibraryCourse.currentText : ""
+        noteLibraryPopup.close()
+        newDocumentSetupDialog.open()
+    }
+
     function openCourseResult(item) {
         if (!item) return
-        if (documentPath && modified) saveTo(documentPath)
+        if (!saveRecoveryNow()) return
         var data = backend.loadDocument(item.path)
         if (data.error) return
         loadData(data, item.path)
@@ -1076,7 +1721,8 @@ ApplicationWindow {
         searchLine = lineIndex
         searchPosition = position
         Qt.callLater(function() {
-            list.positionViewAtIndex(lineIndex, ListView.Contain)
+            documentEditor.editRow(lineIndex, position)
+            documentEditor.select(position, position + length)
             searchInput.forceActiveFocus()
         })
     }
@@ -1147,20 +1793,28 @@ ApplicationWindow {
     }
 
     function applyDocumentData(data, preferredActive) {
+        cancelQueuedRenders()
         loading = true
         lines.clear()
         documentTitle = data.title || "Untitled notes"
         courseName = data.course || ""
+        noteKind = data.noteKind === "problem-solving" ? "problem-solving" : "lecture"
         lectureName = data.lecture || ""
+        problemSetName = data.problemSet || ""
         lectureDate = data.lectureDate || ""
         sourcePdf = data.sourcePdf || ""
+        spellLanguage = data.spellLanguage === "en" ? "en" : "sv"
+        spellcheckEnabled = data.spellcheckEnabled !== false
+        spellingIgnored = Array.isArray(data.spellingIgnored) ? data.spellingIgnored.filter(function(word) { return typeof word === "string" }) : []
+        recoveryId = data.recoveryId || backend.newRecoveryId()
         pdfOpen = false
-        var loaded = data.lines || []
+        var loaded = backend.migrateRowModes(data.lines || [])
         for (var i = 0; i < loaded.length; ++i) {
             var item = loaded[i]
             lines.append(makeLine(item.source || "", item.kind || "normal",
                                   item.label || "", item.asset || "",
-                                  item.slide === undefined ? -1 : item.slide))
+                                  item.slide === undefined ? -1 : item.slide,
+                                  item.mode || "latex"))
         }
         if (lines.count === 0 || lines.get(lines.count - 1).source.length !== 0)
             lines.append(makeLine(""))
@@ -1168,16 +1822,41 @@ ApplicationWindow {
                 ? Math.max(0, lines.count - 1)
                 : Math.max(0, Math.min(lines.count - 1, preferredActive))
         loading = false
-        cancelQueuedRenders()
+        var target = activeIndex
+        syncDocumentEditor()
+        documentEditor.editRow(target)
+        activeIndex = target
         Qt.callLater(renderAll)
     }
 
     function loadData(data, path) {
         if (data.error) return
         applyDocumentData(data)
-        documentPath = path || ""
-        modified = false
-        resetHistory(true)
+        documentPath = backend.normalizedPath(path || data.documentPath || "")
+        documentFileRevision = data.recoveryDirty === true
+                ? (data.baseRevision || "")
+                : (documentPath.length ? backend.fileRevision(documentPath) : "")
+        externalConflictShown = false
+        modified = data.recoveryDirty === true
+        saveStatus = modified ? "Recovered changes"
+                              : documentPath.length ? "Saved" : "Recovery saved"
+        backend.rememberNoteFolder(documentPath)
+        backend.rememberOpenedNote(documentPath)
+        resetHistory(!modified)
+    }
+
+    function loadStartupRecovery() {
+        var recovered = backend.loadRecovery()
+        if (recovered.error || !recovered.lines || !recovered.lines.length) return false
+        if (recovered.recoveryDirty !== true && recovered.documentPath) {
+            var live = backend.loadDocument(recovered.documentPath)
+            if (!live.error) {
+                loadData(live, recovered.documentPath)
+                return true
+            }
+        }
+        loadData(recovered, recovered.documentPath || "")
+        return true
     }
 
     function updateCommandResults(query) {
@@ -1251,8 +1930,7 @@ ApplicationWindow {
         if (activeIndex < 0 || activeIndex >= lines.count) return
         var marker = text.indexOf("|")
         var clean = marker >= 0 ? text.slice(0, marker) + text.slice(marker + 1) : text
-        var rowItem = list.itemAtIndex(activeIndex)
-        var editor = rowItem ? rowItem.currentContent : null
+        var editor = activeEditorItem()
         if (editor && editor.insert) {
             var start = editor.cursorPosition
             editor.insert(start, clean)
@@ -1270,14 +1948,15 @@ ApplicationWindow {
         target: backend
         function onThemeChanged() { Qt.callLater(win.renderAll) }
         function onEditorFontChanged() { Qt.callLater(win.renderAll) }
-        function onRenderFinished(requestId, result) {
-            win.finishQueuedRender(requestId, result)
-        }
     }
 
     ListModel { id: lines }
     ListModel { id: commandResults }
     ListModel { id: courseResults }
+    ListModel { id: noteLibraryResults }
+    ListModel { id: noteLibraryCourses }
+    ListModel { id: noteLibraryFolders }
+    ListModel { id: recoveryResults }
 
     PdfDocument {
         id: lecturePdf
@@ -1293,7 +1972,7 @@ ApplicationWindow {
     }
     Shortcut { sequence: StandardKey.Redo; context: Qt.ApplicationShortcut; onActivated: redoDocument() }
     Shortcut { sequence: StandardKey.SaveAs; onActivated: saveDialog.open() }
-    Shortcut { sequence: StandardKey.Open; onActivated: openDialog.open() }
+    Shortcut { sequence: "Ctrl+O"; context: Qt.ApplicationShortcut; onActivated: openNoteLibrary() }
     Shortcut { sequence: "Ctrl+N"; context: Qt.ApplicationShortcut; onActivated: requestNewDocument() }
     Shortcut { sequence: StandardKey.Quit; onActivated: quitApp() }
     Shortcut { sequence: "Ctrl+,"; onActivated: fontDialog.open() }
@@ -1301,19 +1980,23 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+F"; onActivated: fontDialog.open() }
     Shortcut { sequence: "Ctrl+K"; context: Qt.ApplicationShortcut; onActivated: openCommandFinder() }
     Shortcut { sequence: "Ctrl+."; context: Qt.ApplicationShortcut; onActivated: rowTypePopup.open() }
+    Shortcut { sequence: "Alt+Up"; context: Qt.ApplicationShortcut; onActivated: moveActiveRow(-1) }
+    Shortcut { sequence: "Alt+Down"; context: Qt.ApplicationShortcut; onActivated: moveActiveRow(1) }
+    Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: duplicateActiveRow() }
     Shortcut { sequence: "Ctrl+M"; context: Qt.ApplicationShortcut; onActivated: addCatchupMarker() }
     Shortcut { sequence: "Ctrl+Alt+L"; context: Qt.ApplicationShortcut; onActivated: lectureDialog.open() }
     Shortcut { sequence: "Ctrl+Alt+F"; context: Qt.ApplicationShortcut; onActivated: courseSearchPopup.open() }
     Shortcut { sequence: "Ctrl+Shift+V"; context: Qt.ApplicationShortcut; onActivated: pasteClipboardImage() }
     Shortcut { sequence: "Ctrl+Alt+I"; context: Qt.ApplicationShortcut; onActivated: openFigureEditor() }
     Shortcut { sequence: "Ctrl+Alt+P"; context: Qt.ApplicationShortcut; onActivated: togglePdf() }
+    Shortcut { sequence: "Ctrl+Alt+S"; context: Qt.ApplicationShortcut; onActivated: snippetManager.openManager() }
     Shortcut { sequence: "Ctrl+G"; context: Qt.WindowShortcut; onActivated: openGuide() }
     Shortcut { sequence: StandardKey.Find; context: Qt.ApplicationShortcut; onActivated: openSearch() }
     Shortcut { sequence: "Ctrl+Shift+R"; context: Qt.ApplicationShortcut; onActivated: cycleDisplayMode() }
     Shortcut { sequence: "Ctrl+Shift+E"; context: Qt.ApplicationShortcut; onActivated: exportMenu.open() }
     Shortcut { sequence: "F1"; context: Qt.ApplicationShortcut; onActivated: helpDialog.open() }
     Shortcut { sequence: "Ctrl+Shift+A"; context: Qt.ApplicationShortcut; onActivated: {
-        selectionAnchor = 0; selectionEnd = lines.count - 1
+        documentEditor.selectAll()
     } }
     Shortcut { sequence: StandardKey.Copy; enabled: win.hasLineSelection; onActivated: copySelectedLines() }
     Shortcut { sequence: StandardKey.Cut; enabled: win.hasLineSelection; onActivated: cutSelectedLines() }
@@ -1328,6 +2011,7 @@ ApplicationWindow {
                  && !fontDialog.visible && !lectureDialog.visible
                  && !helpDialog.visible && !messageDialog.visible
                  && !newDocumentDialog.visible && !figureEditor.visible
+                 && !snippetManager.visible
         onActivated: win.keyboardScrollDocument(-Math.max(48, win.editorSize * 3))
     }
     Shortcut {
@@ -1352,7 +2036,7 @@ ApplicationWindow {
         modal: false
         focus: true
         padding: 12
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        closePolicy: Popup.CloseOnEscape
 
         onAboutToShow: {
             searchLine = -1
@@ -1419,8 +2103,12 @@ ApplicationWindow {
     Popup {
         id: rowTypePopup
         objectName: "rowTypePopup"
-        readonly property var kinds: ["normal", "definition", "theorem", "proof", "example"]
-        readonly property var labels: ["Normal", "Definition", "Theorem", "Proof", "Example"]
+        readonly property var kinds: ["normal", "heading", "subheading", "bullet", "numbered",
+                                      "definition", "theorem", "proof", "example", "remark",
+                                      "exercise", "solution"]
+        readonly property var labels: ["Normal", "Heading", "Subheading", "Bullet", "Numbered",
+                                       "Definition", "Theorem", "Proof", "Example", "Remark",
+                                       "Exercise", "Solution"]
         function applyCurrentType() {
             if (rowTypeList.currentIndex >= 0)
                 win.setActiveRowKind(kinds[rowTypeList.currentIndex])
@@ -1528,6 +2216,7 @@ ApplicationWindow {
                     }
                 }
             }
+
         }
     }
 
@@ -1536,25 +2225,43 @@ ApplicationWindow {
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(520, win.width - 48)
+        height: Math.min(650, win.height - 32)
         modal: true
-        title: "Lecture details"
+        title: "Note details"
         standardButtons: Dialog.Cancel | Dialog.Ok
         Material.accent: fontDialog.dialogText
         onOpened: {
+            detailsKindChoice.currentIndex = win.noteKind === "problem-solving" ? 1 : 0
             courseField.text = win.courseName
             lectureField.text = win.lectureName
+            problemSetField.text = win.problemSetName
             lectureDateField.text = win.lectureDate
             Qt.callLater(function() { courseField.forceActiveFocus(); courseField.selectAll() })
         }
         onAccepted: {
             win.recordHistory()
+            win.noteKind = detailsKindChoice.currentIndex === 1
+                    ? "problem-solving" : "lecture"
             win.courseName = courseField.text.trim()
-            win.lectureName = lectureField.text.trim()
+            win.lectureName = win.noteKind === "lecture" ? lectureField.text.trim() : ""
+            win.problemSetName = win.noteKind === "problem-solving"
+                    ? problemSetField.text.trim() : ""
             win.lectureDate = lectureDateField.text.trim()
             win.changed()
         }
-        contentItem: ColumnLayout {
-            spacing: 8
+        contentItem: ScrollView {
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 8
+            Label { text: "Note type"; color: fontDialog.dialogText; font.family: win.editorFont }
+            ComboBox {
+                id: detailsKindChoice
+                Layout.fillWidth: true
+                model: ["Lecture", "Problem-solving"]
+                font.family: win.editorFont
+            }
             Label { text: "Course"; color: fontDialog.dialogText; font.family: win.editorFont }
             TextField {
                 id: courseField
@@ -1563,13 +2270,33 @@ ApplicationWindow {
                 font.family: win.editorFont
                 placeholderText: "Calculus I"
             }
-            Label { text: "Lecture"; color: fontDialog.dialogText; font.family: win.editorFont }
+            Label {
+                text: "Lecture"
+                visible: detailsKindChoice.currentIndex === 0
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+            }
             TextField {
                 id: lectureField
+                visible: detailsKindChoice.currentIndex === 0
                 Layout.fillWidth: true
                 color: fontDialog.dialogText
                 font.family: win.editorFont
                 placeholderText: "Lecture 4 — Limits"
+            }
+            Label {
+                text: "Problem set or topic"
+                visible: detailsKindChoice.currentIndex === 1
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+            }
+            TextField {
+                id: problemSetField
+                visible: detailsKindChoice.currentIndex === 1
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "Problem set 3 — derivatives"
             }
             Label { text: "Date"; color: fontDialog.dialogText; font.family: win.editorFont }
             TextField {
@@ -1578,6 +2305,486 @@ ApplicationWindow {
                 color: fontDialog.dialogText
                 font.family: win.editorFont
                 placeholderText: "2026-08-29"
+            }
+        }
+    }
+    }
+
+    Timer {
+        id: noteLibrarySearchDelay
+        interval: 200
+        repeat: false
+        onTriggered: win.refreshNoteLibrary()
+    }
+
+    Popup {
+        id: noteLibraryPopup
+        objectName: "noteLibraryPopup"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(760, win.width - 40)
+        height: Math.min(620, win.height - 48)
+        modal: true
+        focus: true
+        padding: 1
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: {
+            noteLibrarySearch.text = ""
+            noteLibraryCourse.currentIndex = 0
+            noteLibraryKind.currentIndex = 0
+            win.refreshNoteLibrary()
+            Qt.callLater(function() { noteLibrarySearch.forceActiveFocus() })
+        }
+        background: Rectangle {
+            color: backend.themeBackground
+            radius: 10
+            border.width: 1
+            border.color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.18)
+        }
+        contentItem: ColumnLayout {
+            spacing: 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 62
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                spacing: 10
+
+                TextField {
+                    id: noteLibrarySearch
+                    objectName: "noteLibrarySearch"
+                    Layout.fillWidth: true
+                    placeholderText: "Search notes, courses, dates, or content"
+                    color: win.textColor
+                    font.family: win.editorFont
+                    font.pixelSize: win.editorSize
+                    onTextEdited: noteLibrarySearchDelay.restart()
+                    Keys.onDownPressed: function(event) {
+                        if (noteLibraryResults.count) noteLibraryList.forceActiveFocus()
+                        event.accepted = true
+                    }
+                    Keys.onReturnPressed: function(event) {
+                        if (noteLibraryList.currentIndex >= 0)
+                            win.openLibraryNote(noteLibraryResults.get(noteLibraryList.currentIndex))
+                        event.accepted = true
+                    }
+                }
+
+                ComboBox {
+                    id: noteLibrarySort
+                    objectName: "noteLibrarySort"
+                    Layout.preferredWidth: 178
+                    model: ["Recently updated", "Lecture date", "Title", "Course"]
+                    font.family: win.editorFont
+                    onActivated: win.refreshNoteLibrary()
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                Layout.bottomMargin: 8
+                spacing: 10
+
+                ComboBox {
+                    id: noteLibraryCourse
+                    objectName: "noteLibraryCourse"
+                    Layout.fillWidth: true
+                    textRole: "label"
+                    model: noteLibraryCourses
+                    font.family: win.editorFont
+                    onActivated: win.refreshNoteLibrary()
+                }
+                ComboBox {
+                    id: noteLibraryKind
+                    objectName: "noteLibraryKind"
+                    Layout.preferredWidth: 190
+                    model: ["All note types", "Lectures", "Problem-solving"]
+                    font.family: win.editorFont
+                    onActivated: win.refreshNoteLibrary()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.1)
+            }
+
+            ListView {
+                id: noteLibraryList
+                objectName: "noteLibraryList"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: noteLibraryResults
+                clip: true
+                focus: true
+                boundsBehavior: Flickable.StopAtBounds
+                currentIndex: -1
+                section.property: noteLibrarySort.currentIndex === 3 ? "course" : ""
+                section.criteria: ViewSection.FullString
+                section.delegate: Rectangle {
+                    required property string section
+                    width: noteLibraryList.width
+                    height: 34
+                    color: Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
+                                   backend.themeAccent.b, 0.12)
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent.section.length ? parent.section : "No course"
+                        color: win.textColor
+                        font.family: win.editorFont
+                        font.pixelSize: Math.max(11, win.editorSize - 2)
+                        font.weight: Font.DemiBold
+                    }
+                }
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                WheelHandler {
+                    target: null
+                    onWheel: function(event) {
+                        var distance = win.wheelDistance(event.pixelDelta.y,
+                                                         event.angleDelta.y)
+                        var minimum = noteLibraryList.originY
+                        var maximum = Math.max(minimum, minimum
+                                              + noteLibraryList.contentHeight
+                                              - noteLibraryList.height)
+                        noteLibraryList.contentY = Math.max(minimum, Math.min(
+                            maximum, noteLibraryList.contentY - distance))
+                        event.accepted = true
+                    }
+                }
+
+                delegate: ItemDelegate {
+                    required property int index
+                    required property string path
+                    required property string title
+                    required property string course
+                    required property string noteKind
+                    required property string lecture
+                    required property string problemSet
+                    required property string lectureDate
+                    required property string modifiedLabel
+                    required property string fileName
+                    required property string matchPreview
+                    required property bool pinned
+                    width: noteLibraryList.width
+                    height: matchPreview.length ? 106 : 84
+                    highlighted: ListView.isCurrentItem
+                    contentItem: Column {
+                        spacing: 4
+                        Text {
+                            width: parent.width - 48
+                            text: (pinned ? "★  " : "")
+                                  + (noteKind === "problem-solving" && problemSet.length
+                                     ? problemSet : lecture.length ? lecture : title)
+                            color: win.textColor
+                            elide: Text.ElideRight
+                            font.family: win.editorFont
+                            font.pixelSize: win.editorSize
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            width: parent.width - 48
+                            text: (noteKind === "problem-solving"
+                                   ? "Problem-solving" : "Lecture")
+                                  + " · " + (course.length ? course : "No course")
+                                  + (lectureDate.length ? " · " + lectureDate : "")
+                                  + " · updated " + modifiedLabel
+                            color: win.mutedColor
+                            elide: Text.ElideRight
+                            font.family: win.editorFont
+                            font.pixelSize: Math.max(11, win.editorSize - 3)
+                        }
+                        Text {
+                            width: parent.width - 48
+                            text: matchPreview.length
+                                  ? win.highlightLibraryPreview(matchPreview,
+                                                                noteLibrarySearch.text)
+                                  : fileName
+                            textFormat: matchPreview.length ? Text.StyledText : Text.PlainText
+                            color: win.mutedColor
+                            opacity: 0.72
+                            elide: Text.ElideMiddle
+                            font.family: win.editorFont
+                            font.pixelSize: Math.max(10, win.editorSize - 4)
+                        }
+                    }
+                    ToolButton {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: pinned ? "★" : "☆"
+                        onClicked: win.toggleLibraryPin(noteLibraryResults.get(index))
+                        ToolTip.visible: hovered
+                        ToolTip.text: pinned ? "Unpin note" : "Pin note"
+                    }
+                    onClicked: win.openLibraryNote(noteLibraryResults.get(index))
+                }
+
+                Keys.onReturnPressed: function(event) {
+                    if (currentIndex >= 0)
+                        win.openLibraryNote(noteLibraryResults.get(currentIndex))
+                    event.accepted = true
+                }
+                Keys.onUpPressed: function(event) {
+                    if (currentIndex <= 0) noteLibrarySearch.forceActiveFocus()
+                    else decrementCurrentIndex()
+                    event.accepted = true
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    visible: noteLibraryResults.count === 0
+                    text: noteLibrarySearch.text.length
+                          ? "No matching notes"
+                          : "No notes yet — add a folder or save a note"
+                    color: win.mutedColor
+                    font.family: win.editorFont
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.1)
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 54
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                Label {
+                    Layout.fillWidth: true
+                    text: noteLibraryResults.count + (noteLibraryResults.count === 1
+                          ? " note" : " notes")
+                    color: win.mutedColor
+                    font.family: win.editorFont
+                }
+                Button {
+                    text: "Continue last"
+                    enabled: win.noteLibraryLastNote.path !== undefined
+                             && win.noteLibraryLastNote.path.length > 0
+                    onClicked: win.openLibraryNote(win.noteLibraryLastNote)
+                }
+                Button { text: "New note"; onClicked: win.newNoteForLibraryCourse() }
+                Button { text: "Recovery…"; onClicked: win.openRecoveryCenter() }
+                Button { text: "Folders…"; onClicked: noteLibraryFoldersPopup.open() }
+                Button {
+                    text: "Browse files…"
+                    onClicked: {
+                        noteLibraryPopup.close()
+                        openDialog.open()
+                    }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: recoveryPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(650, win.width - 48)
+        height: Math.min(500, win.height - 64)
+        modal: true
+        focus: true
+        padding: 1
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: backend.themeBackground
+            radius: 10
+            border.width: 1
+            border.color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.18)
+        }
+        contentItem: ColumnLayout {
+            spacing: 0
+            Label {
+                text: "Recovery copies and snapshots"
+                color: win.textColor
+                font.family: win.editorFont
+                font.pixelSize: win.editorSize + 1
+                font.weight: Font.DemiBold
+                Layout.leftMargin: 14
+                Layout.topMargin: 12
+                Layout.bottomMargin: 10
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.1)
+            }
+            ListView {
+                id: recoveryList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: recoveryResults
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: ItemDelegate {
+                    required property int index
+                    required property string path
+                    required property string entryKind
+                    required property string title
+                    required property string course
+                    required property string lectureDate
+                    required property string modifiedLabel
+                    width: recoveryList.width
+                    height: 76
+                    contentItem: Column {
+                        spacing: 4
+                        Text {
+                            width: parent.width - 82
+                            text: title.length ? title : "Untitled notes"
+                            color: win.textColor
+                            elide: Text.ElideRight
+                            font.family: win.editorFont
+                            font.pixelSize: win.editorSize
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            width: parent.width - 82
+                            text: entryKind + " · " + modifiedLabel
+                                  + (course.length ? " · " + course : "")
+                                  + (lectureDate.length ? " · " + lectureDate : "")
+                            color: win.mutedColor
+                            elide: Text.ElideRight
+                            font.family: win.editorFont
+                            font.pixelSize: Math.max(10, win.editorSize - 3)
+                        }
+                    }
+                    Button {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Delete"
+                        onClicked: {
+                            backend.removeRecovery(path)
+                            win.refreshRecoveries()
+                        }
+                    }
+                    onClicked: win.restoreRecovery(recoveryResults.get(index))
+                }
+                Label {
+                    anchors.centerIn: parent
+                    visible: recoveryResults.count === 0
+                    text: "No recovery copies yet"
+                    color: win.mutedColor
+                    font.family: win.editorFont
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 10
+                Layout.rightMargin: 10
+                Layout.topMargin: 8
+                Layout.bottomMargin: 8
+                Label {
+                    Layout.fillWidth: true
+                    text: "Open an item to restore it as unsaved work."
+                    color: win.mutedColor
+                    font.family: win.editorFont
+                }
+                Button { text: "Done"; onClicked: recoveryPopup.close() }
+            }
+        }
+    }
+
+    Popup {
+        id: noteLibraryFoldersPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(620, win.width - 48)
+        height: Math.min(440, win.height - 64)
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            color: backend.themeBackground
+            radius: 10
+            border.width: 1
+            border.color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.18)
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: "Note folders"
+                color: win.textColor
+                font.family: win.editorFont
+                font.pixelSize: win.editorSize + 1
+                font.weight: Font.DemiBold
+                Layout.leftMargin: 12
+                Layout.topMargin: 10
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: noteLibraryFolders
+                delegate: ItemDelegate {
+                    required property int index
+                    required property string path
+                    required property string name
+                    required property bool exists
+                    width: ListView.view.width
+                    height: 62
+                    contentItem: Column {
+                        Text {
+                            width: parent.width - 90
+                            text: (exists ? "" : "Missing · ") + name
+                            color: exists ? win.textColor : "#ff8c85"
+                            elide: Text.ElideRight
+                            font.family: win.editorFont
+                        }
+                        Text {
+                            width: parent.width - 90
+                            text: path
+                            color: win.mutedColor
+                            elide: Text.ElideMiddle
+                            font.family: win.editorFont
+                            font.pixelSize: Math.max(10, win.editorSize - 4)
+                        }
+                    }
+                    Button {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Remove"
+                        onClicked: {
+                            backend.removeNoteFolder(path)
+                            win.refreshNoteLibraryState()
+                            win.refreshNoteLibrary()
+                        }
+                    }
+                }
+                Label {
+                    anchors.centerIn: parent
+                    visible: noteLibraryFolders.count === 0
+                    text: "No folders added"
+                    color: win.mutedColor
+                    font.family: win.editorFont
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 10
+                Layout.rightMargin: 10
+                Layout.bottomMargin: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Rescan"
+                    onClicked: {
+                        backend.rescanNoteLibrary()
+                        win.refreshNoteLibraryState()
+                        win.refreshNoteLibrary()
+                    }
+                }
+                Button { text: "Add folder…"; onClicked: noteLibraryFolderDialog.open() }
+                Button { text: "Done"; onClicked: noteLibraryFoldersPopup.close() }
             }
         }
     }
@@ -1850,7 +3057,7 @@ ApplicationWindow {
         width: Math.min(440, win.width - 48)
         modal: true
         title: "Writing font"
-        Material.theme: win.luminance(backend.themeBackground) < 0.5 ? Material.Dark : Material.Light
+        Material.theme: win.luminance(win.color) < 0.5 ? Material.Dark : Material.Light
         Material.accent: fontDialog.dialogText
         readonly property color dialogText: "#171717"
         readonly property color dialogMuted: "#666666"
@@ -2133,6 +3340,9 @@ ApplicationWindow {
 
     GuideWindow {
         id: guideWindow
+        backendApi: backend
+        builtInSnippetTriggers: win.builtInSnippetTriggers
+        builtInSnippetTemplates: win.builtInSnippetTemplates()
         backgroundColor: backend.themeBackground
         foregroundColor: backend.themeForeground
         accentColor: backend.themeAccent
@@ -2140,6 +3350,14 @@ ApplicationWindow {
         writingFont: win.editorFont
         writingSize: win.editorSize
         preferredSideMargin: backend.editorSideMargin
+    }
+
+    SnippetManager {
+        id: snippetManager
+        backendApi: backend
+        builtInTriggers: win.builtInSnippetTriggers
+        currentCourse: win.courseName
+        onSnippetsChanged: guideWindow.reloadSnippets()
     }
 
     Dialog {
@@ -2157,23 +3375,29 @@ ApplicationWindow {
             font.family: win.editorFont
             font.pixelSize: 14
             lineHeight: 1.35
-            text: "Enter                 Render and move down\n"
+            text: "Enter                 Newline at cursor\n"
+                  + "Ctrl+Enter            Insert row below\n"
+                  + "Shift+Enter           Line break within block\n"
                   + "Up / Down             Scroll when not editing\n"
                   + "Tab / Shift+Tab       Next / prior snippet field\n"
-                  + "Shift+click           Select a range of lines\n"
-                  + "Shift+Up / Down       Extend line selection\n"
-                  + "Ctrl+Shift+A          Select every line\n"
+                  + "Shift+click           Select text\n"
+                  + "Shift+Up / Down       Extend text selection\n"
+                  + "Ctrl+A                Select the document\n"
                   + "Ctrl+F                Find and replace\n"
                   + "Ctrl+G                Open the LaTeX guide\n"
                   + "Ctrl+K                Find LaTeX syntax\n"
+                  + "Ctrl+.                Choose row type\n"
+                  + "Alt+Up / Alt+Down     Move row\n"
+                  + "Ctrl+D                Copy row\n"
                   + "Ctrl+Shift+R          Auto / source / rendered view\n"
                   + "Ctrl+Shift+E          Export TeX or PDF\n"
                   + "Ctrl+Shift+V          Paste an image\n"
                   + "Ctrl+Alt+I            Draw a figure\n"
                   + "Ctrl+Alt+P            Show or add lecture slides\n"
-                  + "Ctrl+N                New note details\n"
+                  + "Ctrl+Alt+S            Custom Tab snippets\n"
+                  + "Ctrl+N                Start an empty note\n"
                   + "Ctrl+S                Save\n"
-                  + "Ctrl+O                Open\n"
+                  + "Ctrl+O                Open notes library\n"
                   + "Ctrl+Q                Quit\n"
                   + "F1                    Show this help"
         }
@@ -2181,6 +3405,7 @@ ApplicationWindow {
 
     Dialog {
         id: messageDialog
+        objectName: "messageDialog"
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(420, win.width - 48)
@@ -2194,6 +3419,31 @@ ApplicationWindow {
             color: fontDialog.dialogText
             wrapMode: Text.Wrap
             font.family: win.editorFont
+        }
+    }
+
+    Dialog {
+        id: imageCaptionDialog
+        property int rowIndex: -1
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(460, win.width - 48)
+        modal: true
+        title: "Figure caption"
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        Material.accent: fontDialog.dialogText
+        onAccepted: {
+            if (rowIndex >= 0 && rowIndex < lines.count) {
+                recordHistory()
+                lines.setProperty(rowIndex, "source", imageCaptionField.text)
+                changed()
+            }
+        }
+        contentItem: TextField {
+            id: imageCaptionField
+            color: fontDialog.dialogText
+            font.family: win.editorFont
+            placeholderText: "Caption or alt text"
         }
     }
 
@@ -2219,23 +3469,31 @@ ApplicationWindow {
     Dialog {
         id: newDocumentSetupDialog
         objectName: "newDocumentSetupDialog"
+        property string selectedKind: "lecture"
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(520, win.width - 48)
+        height: Math.min(650, win.height - 32)
         modal: true
         title: "New note"
         standardButtons: Dialog.Cancel | Dialog.Ok
         Material.accent: fontDialog.dialogText
         onAboutToShow: {
+            selectedKind = "lecture"
             newTitleField.text = ""
-            newCourseField.text = win.courseName
+            newCourseField.text = win.newDocumentCoursePreset.length
+                    ? win.newDocumentCoursePreset : win.courseName
+            win.newDocumentCoursePreset = ""
             newLectureField.text = ""
+            newProblemSetField.text = ""
             newLectureDateField.text = Qt.formatDate(new Date(), "yyyy-MM-dd")
             Qt.callLater(function() { newTitleField.forceActiveFocus() })
         }
-        onAccepted: win.startNewDocumentWithDetails(newTitleField.text,
+        onAccepted: win.startNewDocumentWithDetails(selectedKind,
+                                                    newTitleField.text,
                                                     newCourseField.text,
                                                     newLectureField.text,
+                                                    newProblemSetField.text,
                                                     newLectureDateField.text)
 
         Shortcut {
@@ -2245,8 +3503,33 @@ ApplicationWindow {
             onActivated: newDocumentSetupDialog.accept()
         }
 
-        contentItem: ColumnLayout {
-            spacing: 8
+        contentItem: ScrollView {
+            objectName: "newDocumentScroll"
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+                width: parent.width
+                spacing: 8
+
+            Label { text: "Note type"; color: fontDialog.dialogText; font.family: win.editorFont }
+            RowLayout {
+                Layout.fillWidth: true
+                RadioButton {
+                    id: newLectureKindButton
+                    objectName: "newLectureKindButton"
+                    text: "Lecture"
+                    checked: newDocumentSetupDialog.selectedKind === "lecture"
+                    onClicked: newDocumentSetupDialog.selectedKind = "lecture"
+                }
+                RadioButton {
+                    id: newProblemSolvingKindButton
+                    objectName: "newProblemSolvingKindButton"
+                    text: "Problem-solving"
+                    checked: newDocumentSetupDialog.selectedKind === "problem-solving"
+                    onClicked: newDocumentSetupDialog.selectedKind = "problem-solving"
+                }
+                Item { Layout.fillWidth: true }
+            }
 
             Label { text: "Note title"; color: fontDialog.dialogText; font.family: win.editorFont }
             TextField {
@@ -2258,7 +3541,7 @@ ApplicationWindow {
                 placeholderText: "Lecture 4 — Limits"
             }
 
-            Label { text: "Course or class"; color: fontDialog.dialogText; font.family: win.editorFont }
+            Label { text: "Course or subject"; color: fontDialog.dialogText; font.family: win.editorFont }
             TextField {
                 id: newCourseField
                 objectName: "newCourseField"
@@ -2268,14 +3551,36 @@ ApplicationWindow {
                 placeholderText: "Calculus I"
             }
 
-            Label { text: "Lecture"; color: fontDialog.dialogText; font.family: win.editorFont }
+            Label {
+                text: "Lecture"
+                visible: newDocumentSetupDialog.selectedKind === "lecture"
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+            }
             TextField {
                 id: newLectureField
                 objectName: "newLectureField"
+                visible: newDocumentSetupDialog.selectedKind === "lecture"
                 Layout.fillWidth: true
                 color: fontDialog.dialogText
                 font.family: win.editorFont
                 placeholderText: "Limits and continuity"
+            }
+
+            Label {
+                text: "Problem set or topic"
+                visible: newDocumentSetupDialog.selectedKind === "problem-solving"
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+            }
+            TextField {
+                id: newProblemSetField
+                objectName: "newProblemSetField"
+                visible: newDocumentSetupDialog.selectedKind === "problem-solving"
+                Layout.fillWidth: true
+                color: fontDialog.dialogText
+                font.family: win.editorFont
+                placeholderText: "Problem set 3 — derivatives"
             }
 
             Label { text: "Date"; color: fontDialog.dialogText; font.family: win.editorFont }
@@ -2289,14 +3594,17 @@ ApplicationWindow {
             }
 
             Label {
-                Layout.fillWidth: true
-                text: "Leave the title blank to use the lecture name. The current course carries over so the next lecture is quick to set up."
-                color: fontDialog.dialogMuted
-                wrapMode: Text.Wrap
-                font.family: win.editorFont
-                font.pixelSize: Math.max(11, win.editorSize - 2)
+                    Layout.fillWidth: true
+                    text: newDocumentSetupDialog.selectedKind === "lecture"
+                          ? "Leave the title blank to use the lecture name. The current course carries over."
+                          : "Leave the title blank to use the problem set or topic. The current course carries over."
+                    color: fontDialog.dialogMuted
+                    wrapMode: Text.Wrap
+                    font.family: win.editorFont
+                    font.pixelSize: Math.max(11, win.editorSize - 2)
             }
         }
+    }
     }
 
     Menu {
@@ -2322,7 +3630,17 @@ ApplicationWindow {
         title: "Open FoldTeX notes"
         fileMode: Dialogs.FileDialog.OpenFile
         nameFilters: ["FoldTeX notes (*.foldtex)"]
-        onAccepted: loadData(backend.loadDocument(selectedFile.toString()), selectedFile.toString())
+        onAccepted: win.openDocumentPath(selectedFile.toString())
+    }
+
+    Dialogs.FolderDialog {
+        id: noteLibraryFolderDialog
+        title: "Add a notes folder"
+        onAccepted: {
+            backend.addNoteFolder(selectedFolder.toString())
+            win.refreshNoteLibraryState()
+            win.refreshNoteLibrary()
+        }
     }
 
     Dialogs.FileDialog {
@@ -2332,7 +3650,7 @@ ApplicationWindow {
         nameFilters: ["TeX document (*.tex)"]
         defaultSuffix: "tex"
         onAccepted: {
-            var result = backend.exportTex(selectedFile.toString(), documentTitle, serializedLines())
+            var result = backend.exportDocumentTex(selectedFile.toString(), documentData())
             messageDialog.message = result.error || "TeX exported"
             messageDialog.open()
         }
@@ -2345,7 +3663,7 @@ ApplicationWindow {
         nameFilters: ["PDF document (*.pdf)"]
         defaultSuffix: "pdf"
         onAccepted: {
-            var result = backend.exportPdf(selectedFile.toString(), documentTitle, serializedLines())
+            var result = backend.exportDocumentPdf(selectedFile.toString(), documentData())
             messageDialog.message = result.error || "PDF exported"
             messageDialog.open()
         }
@@ -2358,6 +3676,25 @@ ApplicationWindow {
         nameFilters: ["PDF documents (*.pdf)"]
         onAccepted: win.attachPdf(backend.importPdf(win.documentPath,
                                                     selectedFile.toString()))
+    }
+
+    Dialogs.FileDialog {
+        id: replaceImageDialog
+        property int rowIndex: -1
+        title: "Replace figure"
+        fileMode: Dialogs.FileDialog.OpenFile
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.webp *.svg)"]
+        onAccepted: {
+            var result = backend.importAsset(win.documentPath, selectedFile.toString())
+            if (result.error) {
+                messageDialog.message = result.error
+                messageDialog.open()
+            } else if (rowIndex >= 0 && rowIndex < lines.count) {
+                recordHistory()
+                lines.setProperty(rowIndex, "asset", result.path)
+                changed()
+            }
+        }
     }
 
     FigureEditor {
@@ -2375,50 +3712,6 @@ ApplicationWindow {
         onSaveFailed: function(message) {
             messageDialog.message = message
             messageDialog.open()
-        }
-    }
-
-    Item {
-        id: edgeMenuArea
-        anchors.top: parent.top
-        anchors.right: parent.right
-        width: 54
-        height: edgeMenuPanel.height + 12
-        z: 100
-
-        Item {
-            anchors.top: parent.top
-            anchors.right: parent.right
-            width: 54
-            height: 54
-            HoverHandler { id: edgeMenuTriggerHover }
-        }
-
-        Rectangle {
-            id: edgeMenuPanel
-            objectName: "edgeMenuPanel"
-            anchors.top: parent.top
-            anchors.topMargin: 6
-            anchors.right: parent.right
-            anchors.rightMargin: 6
-            width: 46
-            height: edgeMenuColumn.implicitHeight + 8
-            radius: 9
-            color: Qt.rgba(win.color.r, win.color.g, win.color.b, 0.96)
-            border.width: 1
-            border.color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.14)
-            opacity: edgeMenuTriggerHover.hovered || edgeMenuPanelHover.hovered ? 1 : 0
-            enabled: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 150 } }
-
-            HoverHandler { id: edgeMenuPanelHover }
-
-            Item {
-                id: edgeMenuColumn
-                anchors.fill: parent
-                anchors.margins: 3
-                implicitHeight: 320
-            }
         }
     }
 
@@ -2448,7 +3741,10 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                width: Math.min(520, Math.max(180, parent.width - 220))
+                readonly property real sideClearance: Math.max(
+                    56, saveLabel.x + saveLabel.width + 8)
+                width: Math.min(520, Math.max(120,
+                                              parent.width - sideClearance * 2))
                 clip: true
 
                 TextField {
@@ -2496,195 +3792,56 @@ ApplicationWindow {
             }
 
             ToolButton {
-                objectName: "helpEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 40
-                width: 40
-                height: 40
-                text: "?"
-                flat: true
-                onClicked: helpDialog.open()
-                ToolTip.visible: hovered
-                ToolTip.text: "Keyboard help  F1"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 17
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
-                objectName: "syntaxEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 80
-                width: 40
-                height: 40
-                text: "\\"
-                flat: true
-                onClicked: openCommandFinder()
-                ToolTip.visible: hovered
-                ToolTip.text: "Find LaTeX  Ctrl+K"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 17
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
-                objectName: "viewEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 120
-                width: 40
-                height: 40
-                text: win.displayMode === 1 ? "S" : win.displayMode === 2 ? "R" : "A"
-                flat: true
-                onClicked: cycleDisplayMode()
-                ToolTip.visible: hovered
-                ToolTip.text: "View: " + win.displayModeName() + "  Ctrl+Shift+R"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
                 id: exportButton
-                objectName: "exportEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 160
-                width: 40
-                height: 40
-                text: "⇩"
-                flat: true
-                onClicked: exportMenu.open()
+                objectName: "documentToolsButton"
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⋯"
+                font.pixelSize: 24
+                Accessible.name: "Document tools"
+                onClicked: documentTools.open()
                 ToolTip.visible: hovered
-                ToolTip.text: "Export TeX or PDF  Ctrl+Shift+E"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 18
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+                ToolTip.text: "Document tools"
+                Menu {
+                    id: documentTools
+                    width: Math.min(280, win.width - 32)
+                    x: parent.width - width
+                    y: parent.height
+                    MenuItem { text: "New note"; onTriggered: win.requestNewDocument() }
+                    MenuItem { text: "Open notes"; onTriggered: win.openNoteLibrary() }
+                    MenuItem { text: "Note details…"; onTriggered: lectureDialog.open() }
+                    MenuSeparator { }
+                    MenuItem { text: "Find LaTeX"; onTriggered: win.openCommandFinder() }
+                    MenuItem { text: "Custom snippets…"; onTriggered: snippetManager.openManager() }
+                    MenuItem { text: "Draw a figure…"; onTriggered: win.openFigureEditor() }
+                    MenuItem { text: "Lecture slides…"; onTriggered: win.togglePdf() }
+                    MenuSeparator { }
+                    MenuItem { text: "View: " + win.displayModeName(); onTriggered: win.cycleDisplayMode() }
+                    Menu {
+                        title: "Stavningskontroll: " + (win.spellLanguage === "sv" ? "Svenska" : "English")
+                        MenuItem {
+                            text: "Kontrollera stavning"; checkable: true; checked: win.spellcheckEnabled
+                            onTriggered: { win.recordHistory(); win.spellcheckEnabled = !win.spellcheckEnabled; win.changed() }
+                        }
+                        MenuSeparator { }
+                        MenuItem { text: "Svenska"; checkable: true; checked: win.spellLanguage === "sv"; onTriggered: win.setDocumentSpellingLanguage("sv") }
+                        MenuItem { text: "English"; checkable: true; checked: win.spellLanguage === "en"; onTriggered: win.setDocumentSpellingLanguage("en") }
+                        MenuSeparator { }
+                        MenuItem {
+                            text: "Återställ ignorerade ord"; enabled: win.spellingIgnored.length > 0
+                            onTriggered: { win.recordHistory(); win.spellingIgnored = []; win.changed() }
+                        }
+                        MenuItem { text: documentEditor.spellingError; visible: text.length > 0; enabled: false }
+                    }
+                    MenuItem { text: "Font and spacing…"; onTriggered: fontDialog.open() }
+                    MenuItem { text: "Export…"; onTriggered: exportMenu.open() }
+                    MenuSeparator { }
+                    MenuItem { text: "LaTeX guide"; onTriggered: win.openGuide() }
+                    MenuItem { text: "Keyboard help"; onTriggered: helpDialog.open() }
                 }
             }
 
-            ToolButton {
-                id: guideHeaderButton
-                objectName: "guideHeaderButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 200
-                width: 40
-                height: 40
-                text: "G"
-                flat: true
-                onClicked: openGuide()
-                ToolTip.visible: hovered
-                ToolTip.text: "LaTeX guide  Ctrl+G"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
-                objectName: "figureEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 240
-                width: 40
-                height: 40
-                text: "✎"
-                flat: true
-                onClicked: win.openFigureEditor()
-                ToolTip.visible: hovered
-                ToolTip.text: "Draw figure  Ctrl+Alt+I"
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 18
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
-                objectName: "slidesEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 280
-                width: 40
-                height: 40
-                text: "▥"
-                flat: true
-                onClicked: win.togglePdf()
-                ToolTip.visible: hovered
-                ToolTip.text: sourcePdf.length
-                                  ? "Show or hide slides  Ctrl+Alt+P"
-                                  : "Add lecture slides  Ctrl+Alt+P"
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 17
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-
-            ToolButton {
-                objectName: "settingsEdgeButton"
-                parent: edgeMenuColumn
-                x: 0
-                y: 0
-                width: 40
-                height: 40
-                text: "Aa"
-                flat: true
-                onClicked: fontDialog.open()
-                ToolTip.visible: hovered
-                ToolTip.text: "Font, size, and margin  Ctrl+', Ctrl+, or Ctrl+Shift+F"
-
-                contentItem: Text {
-                    text: parent.text
-                    color: win.textColor
-                    font.family: win.editorFont
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
         }
 
         Rectangle {
@@ -2706,406 +3863,159 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.preferredWidth: win.widePdfSplit ? win.width * 0.54 : win.width
 
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    gesturePolicy: TapHandler.ReleaseWithinBounds
-                    onTapped: function(point) {
-                        var local = list.mapFromItem(notePane, point.position.x,
-                                                     point.position.y)
-                        var rowItem = list.itemAt(local.x, local.y + list.contentY)
-                        if (!rowItem) win.focusBlankWritingArea()
+                DocumentEditor {
+                    id: documentEditor
+                    objectName: "documentEditor"
+                    anchors.fill: parent
+                    backendApi: backend
+                    spellLanguage: win.spellLanguage
+                    spellcheckEnabled: win.spellcheckEnabled
+                    spellingIgnored: win.spellingIgnored
+                    writingWidth: win.pageWidth
+                    fontFamily: win.editorFont
+                    fontSize: win.editorSize
+                    textColor: win.textColor
+                    selectionColor: backend.themeSelection
+                    displayMode: win.displayMode
+                    completionVisible: inlineCompletion.visible && inlineCompletionResults.count > 0 && completionPrefix.length > 0
+                    Keys.priority: Keys.BeforeItem
+                    Keys.onTabPressed: function(event) {
+                        if (documentEditor.completionVisible) win.acceptInlineCompletion()
+                        else win.handleSnippetTab(documentEditor, activeRow)
+                        event.accepted = true
+                    }
+                    Keys.onBacktabPressed: function(event) {
+                        win.retreatSnippet(documentEditor, activeRow)
+                        event.accepted = true
+                    }
+                    onEditStarted: function(separateUndo) { win.beginDocumentEdit(separateUndo) }
+                    onRowsEdited: function(rows) {
+                        win.editingDocument = true
+                        win.syncingDocument = true
+                        for (var i = 0; i < rows.length; ++i) {
+                            var row = rows[i]
+                            if (i >= lines.count) lines.append(win.makeLine(row.source, row.kind, row.label, row.asset, row.slide, row.mode))
+                            else {
+                                var old = lines.get(i)
+                                if (old.source !== row.source || old.kind !== row.kind || old.label !== row.label
+                                        || old.asset !== row.asset || old.slide !== row.slide || old.mode !== row.mode)
+                                    lines.set(i, win.makeLine(row.source, row.kind, row.label, row.asset, row.slide, row.mode))
+                            }
+                        }
+                        if (lines.count > rows.length) lines.remove(rows.length, lines.count - rows.length)
+                        win.activeIndex = activeRow
+                        win.syncingDocument = false
+                        win.updateSnippetText(documentEditor, activeRow)
+                        win.changed()
+                        win.editingDocument = false
+                    }
+                    onCursorPositionChanged: {
+                        if (!win.syncingDocument) {
+                            win.activeIndex = activeRow
+                            win.updateSnippetCursor(documentEditor, activeRow)
+                            win.updateInlineCompletion()
+                        }
+                    }
+                    onTabPressed: function(backward) {
+                        if (!backward && documentEditor.completionVisible) win.acceptInlineCompletion()
+                        else if (backward) win.retreatSnippet(documentEditor, activeRow)
+                        else win.handleSnippetTab(documentEditor, activeRow)
+                    }
+                    onBlockBreakRequested: win.documentBlockBreak()
+                    onInsertRowRequested: win.insertLineAfter(activeRow)
+                    onUndoRequested: win.undoDocument()
+                    onRedoRequested: win.redoDocument()
+                    onEditModeRequested: win.displayMode = 0
+                    onCompletionMove: function(direction) {
+                        inlineSuggestions.currentIndex = Math.max(0, Math.min(inlineSuggestions.count - 1,
+                                                                   inlineSuggestions.currentIndex + direction))
+                    }
+                    onCompletionDismissed: inlineCompletion.close()
+                    onSpellingMenuRequested: function(word, suggestions, loading, x, y) {
+                        if (!loading && !spellingMenu.visible) return
+                        spellingMenu.word = word
+                        spellingMenu.suggestions = suggestions
+                        spellingMenu.loadingSuggestions = loading
+                        if (loading) spellingMenu.popup(x, y + 12)
+                    }
+                    onSpellingDismissed: spellingMenu.close()
+                    onSpellingIgnoreRequested: function(word) { win.ignoreSpellingWord(word) }
+                    onContextMenuRequested: function(row, x, y) {
+                        win.activeIndex = row
+                        documentRowMenu.popup(x, y)
                     }
                 }
-
-            ListView {
-                id: list
-                objectName: "documentList"
-                anchors.fill: parent
-                model: lines
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                spacing: 2
-                topMargin: 46
-                bottomMargin: 120
-                focus: win.displayMode !== 0
-                Keys.onUpPressed: function(event) {
-                    win.keyboardScrollDocument(-Math.max(48, win.editorSize * 3))
-                    event.accepted = true
+                Menu {
+                    id: spellingMenu
+                    objectName: "spellingMenu"
+                    parent: documentEditor
+                    width: 260
+                    property string word: ""
+                    property var suggestions: []
+                    property bool loadingSuggestions: false
+                    MenuItem { text: spellingMenu.word; enabled: false }
+                    MenuItem {
+                        text: spellingMenu.loadingSuggestions ? "Söker förslag…" : "Inga förslag"
+                        visible: spellingMenu.suggestions.length === 0
+                        height: visible ? implicitHeight : 0
+                        enabled: false
+                    }
+                    Instantiator {
+                        model: spellingMenu.suggestions
+                        delegate: MenuItem {
+                            required property string modelData
+                            objectName: "spellingSuggestion"
+                            text: modelData
+                            onTriggered: documentEditor.correctSpelling(text)
+                        }
+                        onObjectAdded: function(index, object) { spellingMenu.insertItem(index + 2, object) }
+                        onObjectRemoved: function(index, object) { spellingMenu.removeItem(object) }
+                    }
+                    MenuSeparator { }
+                    MenuItem { text: "Ignorera ordet i dokumentet"; onTriggered: documentEditor.ignoreSpelling() }
+                    onClosed: documentEditor.forceActiveFocus()
                 }
-                Keys.onDownPressed: function(event) {
-                    win.keyboardScrollDocument(Math.max(48, win.editorSize * 3))
-                    event.accepted = true
+                DropArea {
+                    anchors.fill: parent
+                    onDropped: function(drop) {
+                        if (drop.urls && drop.urls.length)
+                            win.addImportedImage(backend.importAsset(win.documentPath, drop.urls[0]))
+                    }
                 }
-
-            WheelHandler {
-                target: null
-                onWheel: function(event) {
-                    documentScrollLinger.restart()
-                    var delta = win.wheelDistance(event.pixelDelta.y,
-                                                  event.angleDelta.y)
-                    win.scrollDocumentBy(-delta)
-                    event.accepted = true
-                }
-            }
-
-            Item {
-                objectName: "documentScrollHoverZone"
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.right: parent.right
-                width: 24
-                z: 15
-                HoverHandler {
-                    onHoveredChanged: if (hovered) documentScrollLinger.restart()
-                }
-            }
-
-            DropArea {
-                anchors.fill: parent
-                z: 20
-                onDropped: function(drop) {
-                    if (drop.urls && drop.urls.length)
-                        win.addImportedImage(backend.importAsset(win.documentPath, drop.urls[0]))
-                }
-            }
-
-            delegate: Item {
-                id: row
-                required property int index
-                required property string source
-                required property string renderedUrl
-                required property string error
-                required property bool math
-                required property string kind
-                required property string label
-                required property string asset
-                required property int slide
-                readonly property var currentContent: contentLoader.item
-                readonly property real pageLeft: Math.max(0, (width - win.pageWidth) / 2)
-                readonly property real typeInset: hasTypeLabel ? 18 : 0
-                readonly property real contentLeft: contentLoader.x
-                readonly property real displayedContentHeight: currentContent
-                        && currentContent.displayedHeight !== undefined
-                        ? currentContent.displayedHeight : contentLoader.implicitHeight
-                readonly property bool hasTypeLabel: kind !== "normal" && kind !== "image"
-                readonly property bool startsTypeBlock: hasTypeLabel
-                        && (index === 0 || lines.get(index - 1).kind !== kind)
-                readonly property bool endsTypeBlock: hasTypeLabel
-                        && (index === lines.count - 1 || lines.get(index + 1).kind !== kind)
-                width: list.width
-                height: Math.max(win.editorSize * 2.8,
-                                 contentLoader.y + displayedContentHeight + 10)
-
-                Rectangle {
-                    visible: row.hasTypeLabel
-                    anchors.left: parent.left
-                    anchors.leftMargin: row.pageLeft
+                ScrollBar {
+                    objectName: "documentScrollBar"
+                    anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.topMargin: row.startsTypeBlock ? 0 : -list.spacing
                     anchors.bottom: parent.bottom
-                    anchors.bottomMargin: row.endsTypeBlock ? 0 : -list.spacing
-                    width: 2
-                    radius: 1
-                    color: row.kind === "catchup" ? "#e2ad5b" : backend.themeAccent
-                    opacity: 0.72
+                    orientation: Qt.Vertical
+                    size: Math.min(1, documentEditor.height / documentEditor.contentHeight)
+                    position: documentEditor.scrollY / documentEditor.contentHeight
+                    active: hovered || pressed || documentScrollLinger.running
+                    onPositionChanged: if (pressed) documentEditor.scrollY = position * documentEditor.contentHeight
                 }
-
                 Text {
-                    visible: row.hasTypeLabel && row.startsTypeBlock
+                    visible: documentEditor.errorHint.length > 0 && !historyTimer.running
                     anchors.left: parent.left
-                    anchors.leftMargin: row.pageLeft + 10
-                    anchors.top: parent.top
-                    text: row.label.length ? row.label : row.kind
-                    color: row.kind === "catchup" ? "#e2ad5b" : win.mutedColor
-                    font.family: win.editorFont
-                    font.pixelSize: Math.max(10, win.editorSize - 5)
-                    font.capitalization: Font.AllUppercase
-                }
-
-                Rectangle {
-                    anchors.left: contentLoader.left
-                    anchors.right: contentLoader.right
-                    anchors.top: parent.top
+                    anchors.leftMargin: win.pageMargin
                     anchors.bottom: parent.bottom
-                    radius: 4
-                    color: {
-                        var searchLevel = win.searchHighlightLevel(row.index)
-                        if (searchLevel === 2)
-                            return Qt.rgba(backend.themeSelection.r, backend.themeSelection.g,
-                                           backend.themeSelection.b, 0.42)
-                        if (searchLevel === 1)
-                            return Qt.rgba(backend.themeSelection.r, backend.themeSelection.g,
-                                           backend.themeSelection.b, 0.16)
-                        return win.lineIsSelected(row.index)
-                                ? Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.12)
-                                : "transparent"
-                    }
+                    anchors.bottomMargin: 8
+                    width: win.pageWidth
+                    text: documentEditor.errorHint
+                    color: "#b79057"
+                    font.pixelSize: 11
+                    wrapMode: Text.Wrap
                 }
-
-                Loader {
-                    id: contentLoader
-                    x: row.pageLeft + row.typeInset
-                    y: row.hasTypeLabel && row.startsTypeBlock ? 22 : 0
-                    width: win.pageWidth - row.typeInset
-                    sourceComponent: row.kind === "image" ? imageComponent
-                                     : win.displayMode === 1 ? sourceViewComponent
-                                     : win.displayMode === 2 ? renderComponent
-                                     : row.index === win.activeIndex ? editorComponent : renderComponent
+                Menu {
+                    id: documentRowMenu
+                    MenuItem { text: "Row type…"; onTriggered: rowTypePopup.open() }
+                    MenuItem { objectName: "editFigureCaptionMenuItem"; height: visible ? implicitHeight : 0; text: "Edit figure caption…"; visible: win.activeIndex >= 0 && win.activeIndex < lines.count && lines.get(win.activeIndex).kind === "image"; onTriggered: win.editImageCaption(win.activeIndex) }
+                    MenuItem { objectName: "replaceFigureMenuItem"; height: visible ? implicitHeight : 0; text: "Replace figure…"; visible: win.activeIndex >= 0 && win.activeIndex < lines.count && lines.get(win.activeIndex).kind === "image"; onTriggered: win.replaceImage(win.activeIndex) }
+                    MenuSeparator { }
+                    MenuItem { text: "Move up"; onTriggered: win.moveActiveRow(-1) }
+                    MenuItem { text: "Move down"; onTriggered: win.moveActiveRow(1) }
+                    MenuItem { text: "Duplicate"; onTriggered: win.duplicateActiveRow() }
+                    MenuItem { text: "Delete"; onTriggered: win.deleteActiveRow() }
                 }
-
-                Text {
-                    visible: row.kind !== "image" && row.error.length > 0
-                    anchors.right: contentLoader.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "⚠"
-                    color: "#ff6b63"
-                    font.pixelSize: 17
-                }
-
-                Rectangle {
-                    visible: row.slide >= 0
-                    anchors.right: contentLoader.right
-                    anchors.top: parent.top
-                    anchors.topMargin: 2
-                    z: 4
-                    width: slideText.implicitWidth + 12
-                    height: slideText.implicitHeight + 6
-                    radius: height / 2
-                    color: Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
-                                   backend.themeAccent.b, 0.22)
-                    border.width: 1
-                    border.color: Qt.rgba(backend.themeAccent.r, backend.themeAccent.g,
-                                          backend.themeAccent.b, 0.6)
-                    Text {
-                        id: slideText
-                        anchors.centerIn: parent
-                        text: "slide " + (row.slide + 1)
-                        color: win.textColor
-                        font.family: win.editorFont
-                        font.pixelSize: Math.max(10, win.editorSize - 6)
-                    }
-                    TapHandler { onTapped: win.openRowSlide(row.index) }
-                }
-
-                TapHandler {
-                    acceptedModifiers: Qt.NoModifier
-                    onTapped: win.editLine(row.index)
-                }
-                TapHandler {
-                    acceptedModifiers: Qt.ShiftModifier
-                    onTapped: win.extendLineSelection(row.index)
-                }
-
-                Component {
-                    id: imageComponent
-                    Column {
-                        spacing: 6
-                        Image {
-                            width: Math.min(parent.width, implicitWidth)
-                            height: implicitWidth > parent.width
-                                    ? implicitHeight * parent.width / implicitWidth : implicitHeight
-                            source: row.asset.length ? "file://" + row.asset : ""
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            smooth: true
-                        }
-                        Text {
-                            visible: row.source.length > 0
-                            width: parent.width
-                            text: row.source
-                            color: win.mutedColor
-                            wrapMode: Text.Wrap
-                            font.family: win.editorFont
-                            font.pixelSize: win.editorSize - 2
-                        }
-                    }
-                }
-
-                Component {
-                    id: sourceViewComponent
-                    Text {
-                        text: row.source
-                        color: win.textColor
-                        font.family: win.editorFont
-                        font.pixelSize: win.editorSize
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                Component {
-                    id: editorComponent
-                    TextArea {
-                        id: editor
-                        text: row.source
-                        color: win.textColor
-                        selectionColor: backend.themeSelection
-                        selectedTextColor: backend.themeBackground
-                        font.family: win.editorFont
-                        font.pixelSize: win.editorSize
-                        placeholderText: "Start typing…"
-                        placeholderTextColor: win.mutedColor
-                        wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-                        padding: 0
-                        leftPadding: 0
-                        rightPadding: 28
-                        background: null
-                        focus: true
-                        implicitHeight: Math.max(42, contentHeight + 8)
-                        Keys.priority: Keys.BeforeItem
-                        onTextChanged: {
-                            if (text !== row.source) {
-                                lines.setProperty(row.index, "source", text)
-                                lines.setProperty(row.index, "error", "")
-                                win.changed()
-                            }
-                        }
-                        Keys.onReturnPressed: function(event) {
-                            event.accepted = true
-                            win.commitLine(row.index)
-                        }
-                        Keys.onTabPressed: function(event) {
-                            event.accepted = event.modifiers & Qt.ShiftModifier
-                                    ? win.retreatSnippet(editor, row.index)
-                                    : win.handleSnippetTab(editor, row.index)
-                        }
-                        Keys.onBacktabPressed: function(event) {
-                            win.retreatSnippet(editor, row.index)
-                            event.accepted = true
-                        }
-                        Keys.onUpPressed: function(event) {
-                            if (event.modifiers & Qt.ShiftModifier) {
-                                win.extendLineSelectionBy(-1)
-                                event.accepted = true
-                            } else if (editor.cursorRectangle.y > 1) {
-                                event.accepted = false
-                            } else if (row.index > 0) {
-                                event.accepted = true
-                                win.editLine(row.index - 1)
-                            } else event.accepted = false
-                        }
-                        Keys.onDownPressed: function(event) {
-                            if (event.modifiers & Qt.ShiftModifier) {
-                                win.extendLineSelectionBy(1)
-                                event.accepted = true
-                            } else if (row.index < lines.count - 1) {
-                                event.accepted = true
-                                win.editLine(row.index + 1)
-                            } else event.accepted = false
-                        }
-                        Keys.onPressed: function(event) {
-                            if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
-                                if (event.modifiers & Qt.ShiftModifier) win.redoDocument()
-                                else win.undoDocument()
-                                event.accepted = true
-                            } else if (win.hasLineSelection
-                                    && event.key === Qt.Key_C
-                                    && (event.modifiers & Qt.ControlModifier)) {
-                                win.copySelectedLines()
-                                event.accepted = true
-                            } else if (win.hasLineSelection
-                                       && event.key === Qt.Key_X
-                                       && (event.modifiers & Qt.ControlModifier)) {
-                                win.cutSelectedLines()
-                                event.accepted = true
-                            } else if (win.hasLineSelection
-                                       && (event.key === Qt.Key_Delete
-                                           || event.key === Qt.Key_Backspace)) {
-                                win.deleteSelectedLines()
-                                event.accepted = true
-                            } else if (event.key === Qt.Key_Backspace) {
-                                event.accepted = win.joinWithPrevious(editor, row.index)
-                            } else if (event.key === Qt.Key_Delete) {
-                                event.accepted = win.joinWithNext(editor, row.index)
-                            } else if (event.key === Qt.Key_V
-                                       && (event.modifiers & Qt.ControlModifier)) {
-                                event.accepted = win.pasteMultiline(editor, row.index,
-                                                                    backend.clipboardText())
-                            } else event.accepted = false
-                        }
-                        Component.onCompleted: {
-                            forceActiveFocus()
-                            cursorPosition = text.length
-                        }
-                    }
-                }
-
-                Component {
-                    id: renderComponent
-                    Item {
-                        readonly property real displayedHeight: visual.visible
-                                ? visual.height : plainText.implicitHeight
-                        implicitHeight: Math.max(42, displayedHeight)
-                        Text {
-                            id: plainText
-                            visible: !row.math || row.error.length > 0 || row.renderedUrl.length === 0
-                            width: parent.width - 30
-                            text: row.source.length ? row.source : ""
-                            color: row.error.length ? "#ff8c85" : win.textColor
-                            font.family: win.editorFont
-                            font.pixelSize: win.editorSize
-                            wrapMode: Text.Wrap
-                        }
-                        Image {
-                            id: visual
-                            property real logicalSourceWidth: 0
-                            property real logicalSourceHeight: 0
-                            visible: row.math && row.error.length === 0 && row.renderedUrl.length > 0
-                            source: row.renderedUrl
-                            asynchronous: false
-                            cache: false
-                            smooth: true
-                            mipmap: true
-                            fillMode: Image.PreserveAspectFit
-                            sourceSize.width: logicalSourceWidth > 0
-                                              ? Math.ceil(logicalSourceWidth * Screen.devicePixelRatio)
-                                              : 0
-                            sourceSize.height: logicalSourceHeight > 0
-                                               ? Math.ceil(logicalSourceHeight * Screen.devicePixelRatio)
-                                               : 0
-                            width: Math.min(parent.width - 30,
-                                            logicalSourceWidth > 0 ? logicalSourceWidth : implicitWidth)
-                            height: {
-                                var naturalWidth = logicalSourceWidth > 0 ? logicalSourceWidth : implicitWidth
-                                var naturalHeight = logicalSourceHeight > 0 ? logicalSourceHeight : implicitHeight
-                                return naturalWidth > width ? naturalHeight * width / naturalWidth : naturalHeight
-                            }
-
-                            onSourceChanged: {
-                                logicalSourceWidth = 0
-                                logicalSourceHeight = 0
-                            }
-                            onStatusChanged: {
-                                if (status === Image.Ready && logicalSourceWidth === 0
-                                        && implicitWidth > 0 && implicitHeight > 0) {
-                                    logicalSourceWidth = implicitWidth
-                                    logicalSourceHeight = implicitHeight
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            ScrollBar.vertical: ScrollBar {
-                id: documentScrollBar
-                objectName: "documentScrollBar"
-                policy: ScrollBar.AlwaysOn
-                active: hovered || pressed || list.moving || documentScrollLinger.running
-                implicitWidth: 14
-                leftPadding: 5
-                rightPadding: 5
-                topPadding: 8
-                bottomPadding: 8
-                opacity: active ? 1 : 0.24
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-                background: Item { }
-                contentItem: Rectangle {
-                    implicitWidth: 4
-                    radius: width / 2
-                    color: Qt.rgba(win.textColor.r, win.textColor.g, win.textColor.b, 0.48)
-                }
-            }
-            }
             }
 
             Rectangle {
@@ -3199,17 +4109,30 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        var recovered = backend.loadRecovery()
-        if (!recovered.error && recovered.lines && recovered.lines.length)
-            loadData(recovered, "")
-        else {
-            loading = true
-            lines.append(makeLine("\\sqrt[n]{x_1 + x_2 + \\cdots + x_k}"))
-            lines.append(makeLine(""))
-            activeIndex = 1
-            loading = false
-            resetHistory(true)
-            Qt.callLater(renderAll)
+        recoveryId = backend.newRecoveryId()
+        if (startupPath.length) {
+            var startupData = backend.loadDocument(startupPath)
+            if (!startupData.error) loadData(startupData, startupPath)
+            else {
+                startNewDocument()
+                messageDialog.message = startupData.error
+                messageDialog.open()
+            }
+        } else {
+            if (!loadStartupRecovery()) {
+                loading = true
+                lines.append(makeLine(""))
+                activeIndex = 0
+                loading = false
+                resetHistory(true)
+                Qt.callLater(renderAll)
+            }
+        }
+        var environment = backend.environmentStatus()
+        if (!environment.ready) {
+            messageDialog.message = "Math tools missing: " + environment.missing.join(", ")
+                    + ". Install them before taking notes."
+            messageDialog.open()
         }
     }
 }

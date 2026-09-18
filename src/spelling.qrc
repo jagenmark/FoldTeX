@@ -1,0 +1,12 @@
+<RCC><qresource prefix="/spelling">
+<file alias="sv_SE.aff">../third_party/dictionaries/sv_SE.aff</file>
+<file alias="sv_SE.dic">../third_party/dictionaries/sv_SE.dic</file>
+<file alias="en_US.aff">../third_party/dictionaries/en_US.aff</file>
+<file alias="en_US.dic">../third_party/dictionaries/en_US.dic</file>
+<file alias="LICENSE_sv_SE.txt">../third_party/dictionaries/LICENSE_sv_SE.txt</file>
+<file alias="LICENSE_en.txt">../third_party/dictionaries/LICENSE_en.txt</file>
+<file alias="README_en_US.txt">../third_party/dictionaries/README_en_US.txt</file>
+<file alias="SOURCES.md">../third_party/dictionaries/SOURCES.md</file>
+<file alias="LGPL-3.0-only.txt">../third_party/dictionaries/LGPL-3.0-only.txt</file>
+<file alias="GPL-3.0-only.txt">../third_party/dictionaries/GPL-3.0-only.txt</file>
+</qresource></RCC>

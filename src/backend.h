@@ -1,10 +1,13 @@
 #pragma once
 
 #include <QFileSystemWatcher>
+#include <QHash>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+
+#include "snippetstore.h"
 
 class QThread;
 
@@ -32,22 +35,55 @@ public:
     int editorFontSize() const { return m_editorFontSize; }
     int editorSideMargin() const { return m_editorSideMargin; }
 
-    Q_INVOKABLE QVariantMap render(const QString &source, const QString &color, int pixelSize);
+    Q_INVOKABLE QVariantMap render(const QString &source, const QString &color, int pixelSize,
+                                   const QString &preamble = QString(), bool textMode = false);
     Q_INVOKABLE void renderAsync(int requestId, const QString &source,
-                                 const QString &color, int pixelSize);
-    Q_INVOKABLE QVariantMap loadDocument(const QString &urlOrPath);
+                                 const QString &color, int pixelSize,
+                                 const QString &preamble = QString(), bool textMode = false);
+    Q_INVOKABLE QVariantMap loadDocument(const QString &urlOrPath) const;
+    Q_INVOKABLE QVariantList migrateRowModes(const QVariantList &rows) const;
     Q_INVOKABLE bool saveDocumentData(const QString &urlOrPath,
                                       const QVariantMap &document);
+    Q_INVOKABLE QVariantMap saveDocumentDataChecked(const QString &urlOrPath,
+                                                    const QVariantMap &document,
+                                                    const QString &expectedRevision);
+    Q_INVOKABLE qint64 fileModified(const QString &urlOrPath) const;
+    Q_INVOKABLE QString fileRevision(const QString &urlOrPath) const;
+    Q_INVOKABLE QString normalizedPath(const QString &urlOrPath) const;
+    Q_INVOKABLE QVariantList customSnippets() const;
+    Q_INVOKABLE QVariantMap replaceCustomSnippets(const QVariantList &entries) const;
+    Q_INVOKABLE QVariantMap customSnippet(const QString &trigger,
+                                          const QString &course) const;
+    Q_INVOKABLE QVariantMap importCustomSnippets(const QString &urlOrPath) const;
+    Q_INVOKABLE QVariantMap exportCustomSnippets(const QString &urlOrPath) const;
     Q_INVOKABLE bool saveDocument(const QString &urlOrPath, const QString &title,
                                   const QVariantList &lines);
     Q_INVOKABLE QVariantMap loadRecovery();
-    Q_INVOKABLE void saveRecoveryData(const QVariantMap &document);
+    Q_INVOKABLE bool saveRecoveryData(const QVariantMap &document);
     Q_INVOKABLE void saveRecovery(const QString &title, const QVariantList &lines);
     Q_INVOKABLE bool saveSnapshot(const QVariantMap &document);
+    Q_INVOKABLE QVariantList recoveryEntries() const;
+    Q_INVOKABLE bool removeRecovery(const QString &urlOrPath) const;
+    Q_INVOKABLE QVariantMap environmentStatus() const;
+    Q_INVOKABLE QString newRecoveryId() const;
     Q_INVOKABLE QVariantList searchCourse(const QString &documentUrl,
                                           const QString &query) const;
+    Q_INVOKABLE void rememberNoteFolder(const QString &documentUrl) const;
+    Q_INVOKABLE void addNoteFolder(const QString &folderUrl) const;
+    Q_INVOKABLE void removeNoteFolder(const QString &folderUrl) const;
+    Q_INVOKABLE void rescanNoteLibrary() const;
+    Q_INVOKABLE void setNotePinned(const QString &documentUrl, bool pinned) const;
+    Q_INVOKABLE void rememberOpenedNote(const QString &documentUrl) const;
+    Q_INVOKABLE QVariantMap noteLibraryState() const;
+    Q_INVOKABLE QVariantList noteLibrary(const QString &query,
+                                         const QString &sortKey,
+                                         const QString &course = QString(),
+                                         const QString &noteKind = QString()) const;
     Q_INVOKABLE QVariantMap importAsset(const QString &documentUrl,
                                         const QString &sourceUrl) const;
+    Q_INVOKABLE QVariantMap adoptAsset(const QString &documentUrl,
+                                       const QString &sourceUrl) const;
+    Q_INVOKABLE bool removeTemporaryAsset(const QString &sourceUrl) const;
     Q_INVOKABLE QVariantMap importClipboardImage(const QString &documentUrl) const;
     Q_INVOKABLE QVariantMap importPdf(const QString &documentUrl,
                                       const QString &sourceUrl) const;
@@ -66,6 +102,10 @@ public:
                                       const QVariantList &lines);
     Q_INVOKABLE QVariantMap exportPdf(const QString &urlOrPath, const QString &title,
                                       const QVariantList &lines);
+    Q_INVOKABLE QVariantMap exportDocumentTex(const QString &urlOrPath,
+                                              const QVariantMap &document);
+    Q_INVOKABLE QVariantMap exportDocumentPdf(const QString &urlOrPath,
+                                              const QVariantMap &document);
 
 signals:
     void themeChanged();
@@ -73,11 +113,12 @@ signals:
     void editorSideMarginChanged();
     void renderFinished(int requestId, const QVariantMap &result);
     void renderRequested(int requestId, const QString &source,
-                         const QString &color, int pixelSize);
+                         const QString &color, int pixelSize, const QString &preamble, bool textMode);
 
 private:
     QString localPath(const QString &urlOrPath) const;
     QString recoveryPath() const;
+    QString recoveryPathForDocument(const QVariantMap &document) const;
     QString firstLatexError(const QByteArray &output) const;
     void loadTheme();
     void watchTheme();
@@ -93,4 +134,6 @@ private:
     int m_editorSideMargin = 100;
     QThread *m_renderThread = nullptr;
     QObject *m_renderWorker = nullptr;
+    SnippetStore m_snippetStore;
+    mutable QHash<QString, QVariantMap> m_noteLibraryCache;
 };

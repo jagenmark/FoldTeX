@@ -1,13 +1,13 @@
-QT += core gui widgets
+QT += core gui widgets qml quick quickcontrols2 quickdialogs2 testlib
 
 CONFIG += c++17 console
 CONFIG -= app_bundle
-TARGET = backend_regression
+TARGET = block_break_regression
 TEMPLATE = app
 
 INCLUDEPATH += ../src
 HEADERS += ../src/backend.h ../src/snippetstore.h
-SOURCES += backend_regression.cpp ../src/backend.cpp ../src/snippetstore.cpp
+SOURCES += block_break_regression.cpp ../src/backend.cpp ../src/snippetstore.cpp
 
 QT += quick qml
 HEADERS += ../src/documenteditor.h ../src/latexsyntax.h
